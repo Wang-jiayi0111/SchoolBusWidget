@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import java.time.LocalTime
 
-private val Context.timetableDataStore by preferencesDataStore(name = "timetable_store")
+val Context.timetableDataStore by preferencesDataStore(name = "timetable_store")
 
 class TimetableDataStoreRepository(
     private val context: Context,
