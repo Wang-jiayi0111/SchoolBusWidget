@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">SchoolBusWidget</string>
+    <string name="main_tip_add_widget">请长按桌面并添加“校巴发车提醒”组件查看效果</string>
+    <string name="main_self_check_pending">组件注册自检中...</string>
+    <string name="main_self_check_ok">自检通过：系统已识别到校巴组件（%1$d 个）。</string>
+    <string name="main_self_check_fail">自检失败：系统未识别到校巴组件，请卸载重装后重试。</string>
+    <string name="widget_title">校巴发车提醒</string>
+    <string name="widget_description">显示下一班校巴发车时间</string>
+    <string name="widget_selection_placeholder">默认：北区 / 工作日</string>
+    <string name="widget_selection_north">当前选择：北区 / %1$s</string>
+    <string name="widget_next_placeholder">下一班：--:--</string>
+    <string name="widget_next_departure">下一班：%1$s</string>
+    <string name="widget_minutes_placeholder">剩余：-- 分钟</string>
+    <string name="widget_minutes_left">剩余：%1$d 分钟</string>
+    <string name="widget_minutes_unavailable">剩余：不可用</string>
+    <string name="widget_no_departure">今日无后续班次</string>
+    <string name="widget_refresh">刷新</string>
 </resources>
