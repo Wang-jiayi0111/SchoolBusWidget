@@ -2,4 +2,19 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Brand: transit / school bus -->
+    <color name="seed_primary">#E65100</color>
+    <color name="seed_secondary">#00695C</color>
+    <color name="surface_light">#FFF8F5</color>
+    <color name="surface_variant_light">#FFE7DB</color>
+    <color name="on_surface_variant_light">#5C4033</color>
+
+    <!-- Widget panel (always dark for contrast on home screen) -->
+    <color name="widget_bg">#FF1B2631</color>
+    <color name="widget_bg_elevated">#FF243342</color>
+    <color name="widget_on_surface">#FFF5F5F5</color>
+    <color name="widget_on_surface_muted">#FFB0BEC5</color>
+    <color name="widget_accent">#FFFFB74D</color>
+    <color name="widget_divider">#33FFFFFF</color>
 </resources>

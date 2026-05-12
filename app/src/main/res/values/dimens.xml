@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="main_padding_horizontal">20dp</dimen>
+    <dimen name="main_padding_vertical">16dp</dimen>
+    <dimen name="card_corner">16dp</dimen>
+    <dimen name="card_padding">20dp</dimen>
+    <dimen name="hero_time_text">44sp</dimen>
+    <dimen name="widget_corner">14dp</dimen>
+    <dimen name="dialog_edit_padding">16dp</dimen>
+</resources>

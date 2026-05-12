@@ -2,96 +2,121 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1E1E1E"
+    android:background="@drawable/bg_widget_panel"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:paddingStart="14dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="12dp">
 
     <TextView
         android:id="@+id/textTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:letterSpacing="0.02"
         android:text="@string/widget_title"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
+        android:textColor="@color/widget_accent"
+        android:textSize="13sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/textSelection"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
         android:text="@string/widget_selection_placeholder"
-        android:textColor="#D0D0D0"
-        android:textSize="12sp" />
+        android:textColor="@color/widget_on_surface_muted"
+        android:textSize="11sp" />
+
+    <!-- RemoteViews 不支持普通 View 作装饰线，用 ImageView 代替 -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="10dp"
+        android:background="@color/widget_divider"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/main_hero_section_next"
+        android:textColor="@color/widget_on_surface_muted"
+        android:textSize="10sp" />
 
     <TextView
         android:id="@+id/textNextDeparture"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="2dp"
         android:text="@string/widget_next_placeholder"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
+        android:textColor="@color/widget_on_surface"
+        android:textSize="26sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/textMinutesLeft"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
         android:text="@string/widget_minutes_placeholder"
-        android:textColor="#7EE787"
+        android:textColor="@color/widget_accent"
         android:textSize="13sp" />
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <Button
             android:id="@+id/buttonLocation"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_widget_button"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:paddingLeft="10dp"
-            android:paddingTop="4dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
             android:text="@string/widget_toggle_location"
             android:textAllCaps="false"
-            android:textSize="12sp" />
+            android:textColor="@color/widget_on_surface"
+            android:textSize="11sp" />
 
         <Button
             android:id="@+id/buttonDayType"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
             android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_widget_button"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:paddingLeft="10dp"
-            android:paddingTop="4dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
             android:text="@string/widget_toggle_day_type"
             android:textAllCaps="false"
-            android:textSize="12sp" />
+            android:textColor="@color/widget_on_surface"
+            android:textSize="11sp" />
 
         <Button
             android:id="@+id/buttonRefresh"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
             android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_widget_button"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:paddingLeft="10dp"
-            android:paddingTop="4dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
             android:text="@string/widget_refresh"
             android:textAllCaps="false"
-            android:textSize="12sp" />
+            android:textColor="@color/widget_accent"
+            android:textSize="11sp"
+            android:textStyle="bold" />
     </LinearLayout>
-
 </LinearLayout>

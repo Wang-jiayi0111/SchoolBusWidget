@@ -2,34 +2,41 @@ package com.example.schoolbuswidget
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
+import com.example.schoolbuswidget.ui.timetable.TimetableManageActivity
+import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AppCompatActivity
 import com.example.schoolbuswidget.data.TimetableDataStoreRepository
 import com.example.schoolbuswidget.data.WidgetPreferenceRepository
+import com.example.schoolbuswidget.data.holiday.HolidayCalendarRepository
 import com.example.schoolbuswidget.domain.CampusLocation
 import com.example.schoolbuswidget.domain.DepartureTime
+import com.example.schoolbuswidget.domain.EffectiveDayTypeResolver
 import com.example.schoolbuswidget.domain.NextDepartureCalculator
-import com.example.schoolbuswidget.domain.ServiceDayType
+import com.example.schoolbuswidget.domain.resolveServiceDayTypeForMode
+import com.example.schoolbuswidget.ui.DayTypeLabels
+import com.example.schoolbuswidget.util.AppLog
 import com.example.schoolbuswidget.widget.SchoolBusAppWidgetProvider
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDateTime
 
 class MainActivity : AppCompatActivity() {
     private var selectedLocation = CampusLocation.NORTH
-    private var selectedDayType = ServiceDayType.WORKDAY
+    private var dayTypeMode = WidgetPreferenceRepository.DAY_TYPE_MODE_AUTO
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        loadSelectionFromSharedPreference()
+        loadSelectionFromPreferences()
         setupAppControls()
         renderAppTimetable()
     }
 
     override fun onResume() {
         super.onResume()
-        loadSelectionFromSharedPreference()
+        loadSelectionFromPreferences()
         renderAppTimetable()
     }
 
@@ -48,17 +55,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         toggleDayTypeButton.setOnClickListener {
-            selectedDayType = if (selectedDayType == ServiceDayType.WORKDAY) {
-                ServiceDayType.HOLIDAY
-            } else {
-                ServiceDayType.WORKDAY
+            runBlocking {
+                dayTypeMode = WidgetPreferenceRepository(this@MainActivity).cycleDayTypeMode()
             }
             persistSelectionAndSyncWidget()
             renderAppTimetable()
         }
+
+        findViewById<MaterialButton>(R.id.buttonAppManageTimetable).setOnClickListener {
+            startActivity(Intent(this, TimetableManageActivity::class.java))
+        }
     }
 
-    private fun loadSelectionFromSharedPreference() {
+    private fun loadSelectionFromPreferences() {
         runBlocking {
             val preferences = WidgetPreferenceRepository(this@MainActivity)
             selectedLocation = if (preferences.getGlobalLocationIndex() == 0) {
@@ -66,19 +75,15 @@ class MainActivity : AppCompatActivity() {
             } else {
                 CampusLocation.SOUTH
             }
-            selectedDayType = if (preferences.getGlobalDayTypeIndex() == 0) {
-                ServiceDayType.WORKDAY
-            } else {
-                ServiceDayType.HOLIDAY
-            }
+            dayTypeMode = preferences.getDayTypeMode()
         }
     }
 
     private fun persistSelectionAndSyncWidget() {
         runBlocking {
-            WidgetPreferenceRepository(this@MainActivity).setGlobalSelection(
+            WidgetPreferenceRepository(this@MainActivity).setGlobalLocationAndDayTypeMode(
                 locationIndex = if (selectedLocation == CampusLocation.NORTH) 0 else 1,
-                dayTypeIndex = if (selectedDayType == ServiceDayType.WORKDAY) 0 else 1,
+                dayTypeMode = dayTypeMode,
             )
         }
         sendBroadcast(
@@ -91,50 +96,56 @@ class MainActivity : AppCompatActivity() {
     private fun renderAppTimetable() {
         val selectionText = findViewById<TextView>(R.id.textAppSelection)
         val nextDepartureText = findViewById<TextView>(R.id.textAppNextDeparture)
+        val heroTimeText = findViewById<TextView>(R.id.textNextTimeHero)
         val minutesLeftText = findViewById<TextView>(R.id.textAppMinutesLeft)
         val departureListText = findViewById<TextView>(R.id.textDepartureList)
+        val sourceText = findViewById<TextView>(R.id.textDayTypeSource)
 
         runBlocking {
-            val now = LocalDateTime.now()
-            val repository = TimetableDataStoreRepository(this@MainActivity)
-            val departures = repository.getDepartures(selectedLocation, selectedDayType)
-            val nextResult = NextDepartureCalculator().calculate(now, departures)
+            try {
+                val now = LocalDateTime.now()
+                val repository = TimetableDataStoreRepository(this@MainActivity)
+                val holidayRepository = HolidayCalendarRepository(this@MainActivity)
+                val effectiveResolver = EffectiveDayTypeResolver(holidayRepository)
+                val dayResolution = resolveServiceDayTypeForMode(dayTypeMode, now.toLocalDate(), effectiveResolver)
+                val departures = repository.getDepartures(selectedLocation, dayResolution.dayType)
+                val nextResult = NextDepartureCalculator().calculate(now, departures)
 
-            selectionText.text = getString(
-                R.string.main_selection,
-                locationLabel(selectedLocation),
-                dayTypeLabel(selectedDayType),
-            )
-
-            if (nextResult == null) {
-                nextDepartureText.text = getString(R.string.main_no_departure)
-                minutesLeftText.text = getString(R.string.widget_minutes_unavailable)
-            } else {
-                nextDepartureText.text = getString(
-                    R.string.main_next_departure,
-                    nextResult.departureAt.toLocalTime().toString(),
+                selectionText.text = DayTypeLabels.selectionSummary(
+                    this@MainActivity,
+                    selectedLocation == CampusLocation.NORTH,
+                    dayTypeMode,
+                    dayResolution.dayType,
                 )
-                minutesLeftText.text = getString(R.string.main_minutes_left, nextResult.minutesLeft)
+                sourceText.text = DayTypeLabels.resolutionSourceCaption(this@MainActivity, dayResolution.source)
+
+                if (nextResult == null) {
+                    heroTimeText.text = getString(R.string.main_time_placeholder)
+                    nextDepartureText.visibility = View.VISIBLE
+                    nextDepartureText.text = getString(R.string.main_no_departure)
+                    minutesLeftText.text = getString(R.string.widget_minutes_unavailable)
+                } else {
+                    heroTimeText.text = nextResult.departureAt.toLocalTime().toString()
+                    nextDepartureText.visibility = View.GONE
+                    minutesLeftText.text = getString(R.string.main_minutes_left, nextResult.minutesLeft)
+                }
+
+                departureListText.text = getString(
+                    R.string.main_departure_list_item_prefix,
+                    departures.toDisplayString(),
+                )
+            } catch (e: Exception) {
+                AppLog.e("Main screen timetable render failed", e)
+                heroTimeText.text = getString(R.string.main_time_placeholder)
+                nextDepartureText.visibility = View.VISIBLE
+                nextDepartureText.text = getString(R.string.main_error_generic)
+                minutesLeftText.text = ""
             }
-
-            departureListText.text = getString(
-                R.string.main_departure_list_item_prefix,
-                departures.toDisplayString(),
-            )
         }
-    }
-
-    private fun locationLabel(location: CampusLocation): String {
-        return if (location == CampusLocation.NORTH) "北区" else "南区"
-    }
-
-    private fun dayTypeLabel(dayType: ServiceDayType): String {
-        return if (dayType == ServiceDayType.WORKDAY) "工作日" else "假期"
     }
 
     private fun List<DepartureTime>.toDisplayString(): String {
         if (isEmpty()) return getString(R.string.main_departure_list_placeholder)
         return joinToString("、") { it.time.toString() }
     }
-
 }

@@ -46,6 +46,25 @@ class TimetableDataStoreRepository(
         }
     }
 
+    override suspend fun clearSavedDepartures(
+        location: CampusLocation,
+        dayType: ServiceDayType,
+    ) {
+        val key = keyFor(location, dayType)
+        context.timetableDataStore.edit { prefs ->
+            prefs.remove(key)
+        }
+    }
+
+    override suspend fun hasCustomDepartures(
+        location: CampusLocation,
+        dayType: ServiceDayType,
+    ): Boolean {
+        val prefs = context.timetableDataStore.data.first()
+        val raw = prefs[keyFor(location, dayType)]
+        return !raw.isNullOrBlank()
+    }
+
     private fun keyFor(
         location: CampusLocation,
         dayType: ServiceDayType,

@@ -15,4 +15,14 @@ interface TimetableRepository {
         dayType: ServiceDayType,
         departures: List<DepartureTime>,
     )
+
+    suspend fun clearSavedDepartures(
+        location: CampusLocation,
+        dayType: ServiceDayType,
+    )
+
+    suspend fun hasCustomDepartures(
+        location: CampusLocation,
+        dayType: ServiceDayType,
+    ): Boolean
 }

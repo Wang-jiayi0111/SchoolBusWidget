@@ -11,9 +11,13 @@ import android.widget.RemoteViews
 import com.example.schoolbuswidget.R
 import com.example.schoolbuswidget.data.TimetableDataStoreRepository
 import com.example.schoolbuswidget.data.WidgetPreferenceRepository
+import com.example.schoolbuswidget.data.holiday.HolidayCalendarRepository
 import com.example.schoolbuswidget.domain.CampusLocation
+import com.example.schoolbuswidget.domain.EffectiveDayTypeResolver
 import com.example.schoolbuswidget.domain.NextDepartureCalculator
-import com.example.schoolbuswidget.domain.ServiceDayType
+import com.example.schoolbuswidget.domain.resolveServiceDayTypeForMode
+import com.example.schoolbuswidget.ui.DayTypeLabels
+import com.example.schoolbuswidget.util.AppLog
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDateTime
 
@@ -21,7 +25,7 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
-        scheduleMinuteRefresh(context)
+        ensureAlarmForWidgets(context)
     }
 
     override fun onDisabled(context: Context) {
@@ -34,6 +38,7 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray,
     ) {
+        ensureAlarmForWidgets(context)
         appWidgetIds.forEach { appWidgetId ->
             updateWidget(context, appWidgetManager, appWidgetId)
         }
@@ -57,6 +62,15 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         }
 
         if (
+            action == Intent.ACTION_BOOT_COMPLETED ||
+            action == Intent.ACTION_TIME_CHANGED ||
+            action == Intent.ACTION_TIMEZONE_CHANGED ||
+            action == Intent.ACTION_DATE_CHANGED
+        ) {
+            ensureAlarmForWidgets(context)
+        }
+
+        if (
             action == ACTION_MANUAL_REFRESH ||
             action == ACTION_REFRESH_ALL ||
             action == ACTION_MINUTE_REFRESH ||
@@ -67,7 +81,6 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
             action == Intent.ACTION_TIMEZONE_CHANGED ||
             action == Intent.ACTION_DATE_CHANGED
         ) {
-            scheduleMinuteRefresh(context)
             refreshAllWidgets(context)
         }
     }
@@ -78,6 +91,7 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
             val repository = WidgetPreferenceRepository(context)
             appWidgetIds.forEach { repository.clear(it) }
         }
+        ensureAlarmForWidgets(context)
     }
 
     private fun updateWidget(
@@ -92,55 +106,55 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         }
 
         runBlocking {
-            val now = LocalDateTime.now()
-            val preferences = WidgetPreferenceRepository(context)
-            val selectedLocation = if (preferences.getLocationIndex(appWidgetId) == 0) {
-                CampusLocation.NORTH
-            } else {
-                CampusLocation.SOUTH
-            }
-            val selectedDayType = if (preferences.getDayTypeIndex(appWidgetId) == 0) {
-                ServiceDayType.WORKDAY
-            } else {
-                ServiceDayType.HOLIDAY
-            }
-            val repository = TimetableDataStoreRepository(context)
-            val departures = repository.getDepartures(selectedLocation, selectedDayType)
-            val result = NextDepartureCalculator().calculate(now, departures)
+            try {
+                val now = LocalDateTime.now()
+                val preferences = WidgetPreferenceRepository(context)
+                val northSelected = preferences.getLocationIndex(appWidgetId) == 0
+                val selectedLocation = if (northSelected) {
+                    CampusLocation.NORTH
+                } else {
+                    CampusLocation.SOUTH
+                }
+                val mode = preferences.getDayTypeModeForWidget(appWidgetId)
+                val holidayRepository = HolidayCalendarRepository(context)
+                val effectiveResolver = EffectiveDayTypeResolver(holidayRepository)
+                val dayResolution = resolveServiceDayTypeForMode(mode, now.toLocalDate(), effectiveResolver)
 
-            views.setTextViewText(
-                R.id.textSelection,
-                context.getString(
-                    R.string.widget_selection,
-                    locationLabel(selectedLocation),
-                    dayTypeLabel(selectedDayType),
-                ),
-            )
+                val repository = TimetableDataStoreRepository(context)
+                val departures = repository.getDepartures(selectedLocation, dayResolution.dayType)
+                val result = NextDepartureCalculator().calculate(now, departures)
 
-            if (result == null) {
-                views.setTextViewText(R.id.textNextDeparture, context.getString(R.string.widget_no_departure))
-                views.setTextViewText(R.id.textMinutesLeft, context.getString(R.string.widget_minutes_unavailable))
-            } else {
                 views.setTextViewText(
-                    R.id.textNextDeparture,
-                    context.getString(R.string.widget_next_departure, result.departureAt.toLocalTime().toString()),
+                    R.id.textSelection,
+                    DayTypeLabels.selectionSummary(
+                        context,
+                        northSelected,
+                        mode,
+                        dayResolution.dayType,
+                    ),
                 )
-                views.setTextViewText(
-                    R.id.textMinutesLeft,
-                    context.getString(R.string.widget_minutes_left, result.minutesLeft),
-                )
+
+                if (result == null) {
+                    views.setTextViewText(R.id.textNextDeparture, context.getString(R.string.main_time_placeholder))
+                    views.setTextViewText(R.id.textMinutesLeft, context.getString(R.string.widget_no_departure))
+                } else {
+                    views.setTextViewText(
+                        R.id.textNextDeparture,
+                        result.departureAt.toLocalTime().toString(),
+                    )
+                    views.setTextViewText(
+                        R.id.textMinutesLeft,
+                        context.getString(R.string.widget_minutes_left, result.minutesLeft),
+                    )
+                }
+            } catch (e: Exception) {
+                AppLog.e("Widget update failed for id=$appWidgetId", e)
+                views.setTextViewText(R.id.textNextDeparture, context.getString(R.string.widget_error_generic))
+                views.setTextViewText(R.id.textMinutesLeft, "")
             }
         }
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
-    }
-
-    private fun dayTypeLabel(dayType: ServiceDayType): String {
-        return if (dayType == ServiceDayType.WORKDAY) "工作日" else "假期"
-    }
-
-    private fun locationLabel(location: CampusLocation): String {
-        return if (location == CampusLocation.NORTH) "北区" else "南区"
     }
 
     private fun refreshAllWidgets(context: Context) {
@@ -151,12 +165,20 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         onUpdate(context, manager, widgetIds)
     }
 
-    private fun scheduleMinuteRefresh(context: Context) {
+    private fun ensureAlarmForWidgets(context: Context) {
+        val manager = AppWidgetManager.getInstance(context)
+        val widgetIds = manager.getAppWidgetIds(
+            ComponentName(context, SchoolBusAppWidgetProvider::class.java),
+        )
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        if (widgetIds.isEmpty()) {
+            alarmManager.cancel(minuteRefreshPendingIntent(context))
+            return
+        }
         alarmManager.setInexactRepeating(
             AlarmManager.RTC,
-            System.currentTimeMillis() + 60_000L,
-            60_000L,
+            System.currentTimeMillis() + REFRESH_INTERVAL_MS,
+            REFRESH_INTERVAL_MS,
             minuteRefreshPendingIntent(context),
         )
     }
@@ -219,6 +241,7 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_REFRESH_ALL = "com.example.schoolbuswidget.action.REFRESH_ALL"
+        private const val REFRESH_INTERVAL_MS = 60_000L
         private const val REQUEST_MANUAL_REFRESH = 1001
         private const val REQUEST_MINUTE_REFRESH = 1002
         private const val REQUEST_TOGGLE_LOCATION = 2001
