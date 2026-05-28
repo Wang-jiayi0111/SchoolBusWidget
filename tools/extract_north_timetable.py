@@ -151,6 +151,7 @@ def estimate_split_x(ocr_rows: list[dict], img_width: float, fallback: float) ->
 
 def extract_two_digit_minutes_from_string(s: str) -> list[int]:
     s = s.replace("暂无", "")
+    # OCR often joins minutes with '.' instead of spaces (e.g. 00102030.4050).
     digits_only = re.sub(r"\D", "", s)
     pairs: list[int] = []
     i = 0
@@ -221,7 +222,7 @@ def is_minute_digit_cell(text: str) -> bool:
         return False
     if re.search(r"每|分钟|意为", t):
         return False
-    return bool(re.match(r"^[\d\s]+$", t))
+    return bool(re.match(r"^[\d\s.]+$", t))
 
 
 def join_minute_digits_only(texts: list[str]) -> str:
@@ -268,7 +269,8 @@ def schedule_row_filter(
     out: list[dict] = []
     for r in ocr_rows:
         t = r["text"]
-        if r["x"] > img_w * 0.93:
+        # Drop far-right instruction column only (holiday digits sit ~0.82–0.86 of width).
+        if r["x"] > img_w * 0.92:
             continue
         if len(t) > 40 and re.search(r"[A-Za-z]{8}", t):
             continue
@@ -362,14 +364,18 @@ def main() -> None:
         type=float,
         nargs=4,
         metavar=("L", "T", "R", "B"),
-        default=(0.02, 0.22, 0.82, 0.72),
+        # Table only: exclude top route strip, bottom map, right instruction column.
+        default=(0.01, 0.27, 0.64, 0.72),
     )
     parser.add_argument("--split-fraction", type=float, default=None, help="Override split as fraction of image width")
     args = parser.parse_args()
+    out_dir = Path(__file__).resolve().parent
 
     img = load_image_bgr(args.image)
     cropped = crop_schedule_region(img, tuple(args.crop))
     preprocessed = preprocess_for_ocr(cropped, upscale=args.upscale)
+    cv2.imwrite(str(out_dir / "debug_cropped.png"), cropped)
+    cv2.imwrite(str(out_dir / "debug_preprocessed.png"), preprocessed)
     img_h, img_w = preprocessed.shape[:2]
 
     sc = args.upscale if args.upscale > 1 else 1.5
@@ -398,7 +404,6 @@ def main() -> None:
         merge_gap=merge_gap,
     )
 
-    out_dir = Path(__file__).resolve().parent
     raw_path = out_dir / "ocr_improved_raw.json"
     out_path = out_dir / "north_timetable_improved.json"
 

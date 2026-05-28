@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+val rapidOcrAar = file("libs/OcrLibrary-1.3.0-release.aar")
+
 android {
     namespace = "com.example.schoolbuswidget"
     buildFeatures {
@@ -37,6 +39,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
         isCoreLibraryDesugaringEnabled = true
     }
+
+    packaging {
+        jniLibs {
+            pickFirsts += "lib/**/libonnxruntime.so"
+        }
+    }
 }
 
 dependencies {
@@ -46,7 +54,14 @@ dependencies {
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.material)
-    implementation(libs.mlkit.text.recognition.chinese)
+    if (rapidOcrAar.isFile) {
+        implementation(files(rapidOcrAar))
+    } else {
+        throw GradleException(
+            "缺少 RapidOCR 引擎库。请将 OcrLibrary-1.3.0-release.aar 放入 app/libs/ 后再构建。\n" +
+                "下载：https://github.com/RapidAI/RapidOcrAndroidOnnx/releases/download/1.3.0/OcrLibrary-1.3.0-release.aar",
+        )
+    }
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)

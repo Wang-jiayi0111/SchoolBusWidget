@@ -8,6 +8,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
+import com.example.schoolbuswidget.MainActivity
 import com.example.schoolbuswidget.R
 import com.example.schoolbuswidget.data.TimetableDataStoreRepository
 import com.example.schoolbuswidget.data.WidgetPreferenceRepository
@@ -100,6 +101,7 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         appWidgetId: Int,
     ) {
         val views = RemoteViews(context.packageName, R.layout.widget_school_bus).apply {
+            setOnClickPendingIntent(R.id.widget_open_app_area, openAppPendingIntent(context, appWidgetId))
             setOnClickPendingIntent(R.id.buttonRefresh, manualRefreshPendingIntent(context, appWidgetId))
             setOnClickPendingIntent(R.id.buttonLocation, toggleLocationPendingIntent(context, appWidgetId))
             setOnClickPendingIntent(R.id.buttonDayType, toggleDayTypePendingIntent(context, appWidgetId))
@@ -188,6 +190,20 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         alarmManager.cancel(minuteRefreshPendingIntent(context))
     }
 
+    private fun openAppPendingIntent(context: Context, appWidgetId: Int): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        return PendingIntent.getActivity(
+            context,
+            REQUEST_OPEN_APP + appWidgetId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private fun manualRefreshPendingIntent(context: Context, appWidgetId: Int): PendingIntent {
         val intent = Intent(context, SchoolBusAppWidgetProvider::class.java).apply {
             action = ACTION_MANUAL_REFRESH
@@ -246,6 +262,7 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         private const val REQUEST_MINUTE_REFRESH = 1002
         private const val REQUEST_TOGGLE_LOCATION = 2001
         private const val REQUEST_TOGGLE_DAY_TYPE = 2002
+        private const val REQUEST_OPEN_APP = 3000
         private const val ACTION_MANUAL_REFRESH = "com.example.schoolbuswidget.action.MANUAL_REFRESH"
         private const val ACTION_MINUTE_REFRESH = "com.example.schoolbuswidget.action.MINUTE_REFRESH"
         private const val ACTION_TOGGLE_LOCATION = "com.example.schoolbuswidget.action.TOGGLE_LOCATION"

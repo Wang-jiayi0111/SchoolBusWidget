@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
@@ -17,11 +19,15 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.schoolbuswidget.R
 import com.example.schoolbuswidget.data.TimetableDataStoreRepository
-import com.example.schoolbuswidget.data.mlkit.MlKitChineseTextRecognizer
+import com.example.schoolbuswidget.data.rapidocr.OcrBitmapPreprocessor
+import com.example.schoolbuswidget.data.rapidocr.RapidOcrRecognizer
 import com.example.schoolbuswidget.domain.CampusLocation
 import com.example.schoolbuswidget.domain.DepartureTime
+import com.example.schoolbuswidget.domain.NorthPeak655PosterParser
 import com.example.schoolbuswidget.domain.ServiceDayType
+import com.example.schoolbuswidget.BuildConfig
 import com.example.schoolbuswidget.domain.TimetableImportParser
+import com.example.schoolbuswidget.data.rapidocr.TimetableOcrDebugDump
 import com.example.schoolbuswidget.widget.SchoolBusAppWidgetProvider
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
@@ -29,16 +35,14 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
-import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
-
 class TimetableManageActivity : AppCompatActivity() {
 
     private val times = mutableListOf<LocalTime>()
-    private lateinit var adapter: TimetableTimeAdapter
+    private lateinit var adapter: TimetableGroupedTimeAdapter
     private val repository by lazy { TimetableDataStoreRepository(this) }
 
     private lateinit var chipNorth: Chip
@@ -69,10 +73,10 @@ class TimetableManageActivity : AppCompatActivity() {
         val chipGroupCampus = findViewById<ChipGroup>(R.id.chipGroupCampus)
         val chipGroupDayType = findViewById<ChipGroup>(R.id.chipGroupDayType)
 
-        adapter = TimetableTimeAdapter(times) { index ->
+        adapter = TimetableGroupedTimeAdapter(times) { index ->
             if (index in times.indices) {
                 times.removeAt(index)
-                adapter.notifyDataSetChanged()
+                adapter.rebuildItems()
             }
         }
         val recycler = findViewById<RecyclerView>(R.id.recyclerTimes)
@@ -113,7 +117,7 @@ class TimetableManageActivity : AppCompatActivity() {
                 .map { it.time }
             times.clear()
             times.addAll(list)
-            adapter.notifyDataSetChanged()
+            adapter.rebuildItems()
             val custom = repository.hasCustomDepartures(selectedLocation(), selectedDayType())
             textCustomSource.text = getString(
                 if (custom) R.string.timetable_source_custom else R.string.timetable_source_builtin,
@@ -133,7 +137,7 @@ class TimetableManageActivity : AppCompatActivity() {
             if (t !in times) {
                 times.add(t)
                 times.sort()
-                adapter.notifyDataSetChanged()
+                adapter.rebuildItems()
             }
         }
         picker.show(supportFragmentManager, "add_time")
@@ -170,6 +174,10 @@ class TimetableManageActivity : AppCompatActivity() {
     }
 
     private fun showImportTextDialog() {
+        if (selectedLocation() == CampusLocation.NORTH) {
+            showNorthImportTextDualDialog()
+            return
+        }
         val input = EditText(this).apply {
             setHint(R.string.timetable_import_text_hint)
             minLines = 5
@@ -188,18 +196,103 @@ class TimetableManageActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showNorthImportTextDualDialog() {
+        val pad = resources.getDimensionPixelSize(R.dimen.dialog_edit_padding)
+        val scroll = ScrollView(this)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        val labelWd = TextView(this).apply { text = getString(R.string.label_day_workday) }
+        val editWd = EditText(this).apply {
+            minLines = 4
+            setHorizontallyScrolling(false)
+            setHint(R.string.timetable_import_text_workday_hint)
+        }
+        val labelHol = TextView(this).apply {
+            text = getString(R.string.label_day_holiday)
+            setPadding(0, pad / 2, 0, 0)
+        }
+        val editHol = EditText(this).apply {
+            minLines = 4
+            setHorizontallyScrolling(false)
+            setHint(R.string.timetable_import_text_holiday_hint)
+        }
+        container.addView(labelWd)
+        container.addView(editWd)
+        container.addView(labelHol)
+        container.addView(editHol)
+        scroll.addView(container)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.timetable_import_text_north_dual_title)
+            .setView(scroll)
+            .setPositiveButton(R.string.timetable_import_text_north_dual_save) { _, _ ->
+                val wd = TimetableImportParser.extractTimesFromText(editWd.text.toString())
+                val hol = TimetableImportParser.extractTimesFromText(editHol.text.toString())
+                if (wd.isEmpty() && hol.isEmpty()) {
+                    Toast.makeText(this, R.string.timetable_import_text_north_dual_empty, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                lifecycleScope.launch {
+                    if (wd.isNotEmpty()) {
+                        repository.saveDepartures(
+                            CampusLocation.NORTH,
+                            ServiceDayType.WORKDAY,
+                            wd.distinct().sorted().map { DepartureTime(it) },
+                        )
+                    }
+                    if (hol.isNotEmpty()) {
+                        repository.saveDepartures(
+                            CampusLocation.NORTH,
+                            ServiceDayType.HOLIDAY,
+                            hol.distinct().sorted().map { DepartureTime(it) },
+                        )
+                    }
+                    loadTimetableForSelection()
+                    Toast.makeText(
+                        this@TimetableManageActivity,
+                        R.string.timetable_import_north_text_saved,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    refreshHomeWidgets()
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun onImagePicked(uri: Uri) {
         lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { decodeBitmapMaxSide(uri, 1600) }
+            val bitmap = withContext(Dispatchers.IO) { decodeBitmapMaxSide(uri, 2048) }
             if (bitmap == null) {
                 Toast.makeText(this@TimetableManageActivity, R.string.timetable_image_load_fail, Toast.LENGTH_SHORT).show()
                 return@launch
             }
+            val campus = selectedLocation()
+            val dayType = selectedDayType()
+            TimetableOcrDebugDump.lastDebugDir = null
+            TimetableOcrDebugDump.logStart(
+                if (campus == CampusLocation.NORTH) "NORTH" else "SOUTH",
+            )
             try {
-                val inputImage = InputImage.fromBitmap(bitmap, 0)
-                val text = MlKitChineseTextRecognizer.recognizeText(inputImage)
-                val parsed = TimetableImportParser.extractTimesFromText(text)
-                showImportMergeDialog(parsed)
+                val outcome = withContext(Dispatchers.Default) {
+                    ocrBitmapToOutcome(bitmap, campus, dayType)
+                }
+                if (BuildConfig.DEBUG) {
+                    TimetableOcrDebugDump.lastDebugDir?.let { dir ->
+                        Toast.makeText(
+                            this@TimetableManageActivity,
+                            "调试图:\n$dir\n或 下载/SchoolBusOcr/",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+                when (outcome) {
+                    is OcrImportOutcome.NorthDual ->
+                        showNorthDualImageImportDialog(outcome.workday, outcome.holiday)
+                    is OcrImportOutcome.Single ->
+                        showImportMergeDialog(outcome.times)
+                }
             } catch (e: Exception) {
                 Toast.makeText(
                     this@TimetableManageActivity,
@@ -210,6 +303,134 @@ class TimetableManageActivity : AppCompatActivity() {
                 if (!bitmap.isRecycled) bitmap.recycle()
             }
         }
+    }
+
+    private sealed class OcrImportOutcome {
+        data class NorthDual(val workday: List<LocalTime>, val holiday: List<LocalTime>) : OcrImportOutcome()
+        data class Single(val times: List<LocalTime>) : OcrImportOutcome()
+    }
+
+    /**
+     * North 655 poster: when both columns parse well, return [NorthDual] so the UI can save both without
+     * switching the day-type chip. Otherwise same as before (single list for merge/replace on screen).
+     */
+    private fun ocrBitmapToOutcome(
+        decoded: Bitmap,
+        campus: CampusLocation,
+        dayType: ServiceDayType,
+    ): OcrImportOutcome {
+        val prep = OcrBitmapPreprocessor.preprocessForTimetableOcr(decoded)
+        try {
+            if (campus == CampusLocation.NORTH) {
+                TimetableOcrDebugDump.savePng(this, prep, "ocr_prep.png")
+                val cropped = OcrBitmapPreprocessor.cropNorthScheduleRegion(prep)
+                TimetableOcrDebugDump.savePng(this, cropped, "ocr_cropped.png")
+                val (scaled, appliedScale) = OcrBitmapPreprocessor.upscaleForScheduleOcr(cropped)
+                if (scaled !== cropped && !cropped.isRecycled) cropped.recycle()
+                try {
+                    TimetableOcrDebugDump.savePng(this, scaled, "ocr_scaled.png")
+                    val lines = RapidOcrRecognizer.recognizeLines(scaled, this)
+                    val structured = NorthPeak655PosterParser.tryParse(
+                        lines,
+                        scaled.width,
+                        scaled.height,
+                        appliedScale,
+                    )
+                    if (structured != null) {
+                        val wdOk = structured.workday.size >= MIN_NORTH_STRUCTURED_DEPARTURES
+                        val holOk = structured.holiday.size >= MIN_NORTH_HOLIDAY_DEPARTURES
+                        if (wdOk && holOk) {
+                            return OcrImportOutcome.NorthDual(structured.workday, structured.holiday)
+                        }
+                        val column = when (dayType) {
+                            ServiceDayType.WORKDAY -> structured.workday
+                            ServiceDayType.HOLIDAY -> structured.holiday
+                        }
+                        if (column.size >= MIN_NORTH_STRUCTURED_DEPARTURES) {
+                            return OcrImportOutcome.Single(column)
+                        }
+                    }
+                } finally {
+                    if (!scaled.isRecycled) scaled.recycle()
+                }
+            }
+            val flat = TimetableImportParser.extractTimesFromText(
+                RapidOcrRecognizer.recognizeText(prep, this),
+            )
+            return OcrImportOutcome.Single(flat)
+        } finally {
+            if (!prep.isRecycled && prep !== decoded) prep.recycle()
+        }
+    }
+
+    private fun showNorthDualImageImportDialog(workday: List<LocalTime>, holiday: List<LocalTime>) {
+        val wdPrev = previewTimesForDialog(workday)
+        val hdPrev = previewTimesForDialog(holiday)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.timetable_import_north_dual_title)
+            .setMessage(
+                getString(
+                    R.string.timetable_import_north_dual_message,
+                    workday.size,
+                    wdPrev,
+                    holiday.size,
+                    hdPrev,
+                ),
+            )
+            .setPositiveButton(R.string.timetable_import_north_dual_save_both) { _, _ ->
+                saveNorthBothColumns(workday, holiday)
+            }
+            .setNeutralButton(R.string.timetable_import_north_dual_save_one) { _, _ ->
+                val only = when (selectedDayType()) {
+                    ServiceDayType.WORKDAY -> workday
+                    ServiceDayType.HOLIDAY -> holiday
+                }
+                saveNorthOneColumn(selectedDayType(), only)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun previewTimesForDialog(times: List<LocalTime>, maxShow: Int = 8): String {
+        val head = times.take(maxShow).joinToString("、") { it.toString() }
+        return if (times.size > maxShow) "$head…" else head
+    }
+
+    private fun saveNorthBothColumns(workday: List<LocalTime>, holiday: List<LocalTime>) {
+        lifecycleScope.launch {
+            repository.saveDepartures(
+                CampusLocation.NORTH,
+                ServiceDayType.WORKDAY,
+                workday.distinct().sorted().map { DepartureTime(it) },
+            )
+            repository.saveDepartures(
+                CampusLocation.NORTH,
+                ServiceDayType.HOLIDAY,
+                holiday.distinct().sorted().map { DepartureTime(it) },
+            )
+            loadTimetableForSelection()
+            Toast.makeText(this@TimetableManageActivity, R.string.timetable_import_north_dual_saved_both, Toast.LENGTH_SHORT).show()
+            refreshHomeWidgets()
+        }
+    }
+
+    private fun saveNorthOneColumn(dayType: ServiceDayType, times: List<LocalTime>) {
+        lifecycleScope.launch {
+            repository.saveDepartures(
+                CampusLocation.NORTH,
+                dayType,
+                times.distinct().sorted().map { DepartureTime(it) },
+            )
+            loadTimetableForSelection()
+            Toast.makeText(this@TimetableManageActivity, R.string.timetable_import_north_dual_saved_one, Toast.LENGTH_SHORT).show()
+            refreshHomeWidgets()
+        }
+    }
+
+    companion object {
+        /** If structured north parse yields at least this many times, trust it over flat OCR. */
+        private const val MIN_NORTH_STRUCTURED_DEPARTURES = 12
+        private const val MIN_NORTH_HOLIDAY_DEPARTURES = 8
     }
 
     private fun decodeBitmapMaxSide(uri: Uri, maxSide: Int): Bitmap? {
@@ -240,14 +461,14 @@ class TimetableManageActivity : AppCompatActivity() {
                 times.clear()
                 times.addAll(parsed)
                 times.sort()
-                adapter.notifyDataSetChanged()
+                adapter.rebuildItems()
             }
             .setNeutralButton(R.string.timetable_import_merge) { _, _ ->
                 val merged = (times + parsed).toMutableSet().toMutableList()
                 merged.sort()
                 times.clear()
                 times.addAll(merged)
-                adapter.notifyDataSetChanged()
+                adapter.rebuildItems()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()

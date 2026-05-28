@@ -9,60 +9,70 @@
     android:paddingEnd="14dp"
     android:paddingBottom="12dp">
 
-    <TextView
-        android:id="@+id/textTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:letterSpacing="0.02"
-        android:text="@string/widget_title"
-        android:textColor="@color/widget_accent"
-        android:textSize="13sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/textSelection"
+    <!-- 点击主区域打开应用（按钮行单独处理） -->
+    <LinearLayout
+        android:id="@+id/widget_open_app_area"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="@string/widget_selection_placeholder"
-        android:textColor="@color/widget_on_surface_muted"
-        android:textSize="11sp" />
+        android:clickable="true"
+        android:contentDescription="@string/widget_open_app_content_description"
+        android:focusable="true"
+        android:orientation="vertical">
 
-    <!-- RemoteViews 不支持普通 View 作装饰线，用 ImageView 代替 -->
-    <ImageView
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginBottom="10dp"
-        android:background="@color/widget_divider"
-        android:contentDescription="@null"
-        android:importantForAccessibility="no" />
+        <TextView
+            android:id="@+id/textTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.02"
+            android:text="@string/widget_title"
+            android:textColor="@color/widget_accent"
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/main_hero_section_next"
-        android:textColor="@color/widget_on_surface_muted"
-        android:textSize="10sp" />
+        <TextView
+            android:id="@+id/textSelection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/widget_selection_placeholder"
+            android:textColor="@color/widget_on_surface_muted"
+            android:textSize="11sp" />
 
-    <TextView
-        android:id="@+id/textNextDeparture"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:text="@string/widget_next_placeholder"
-        android:textColor="@color/widget_on_surface"
-        android:textSize="26sp"
-        android:textStyle="bold" />
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp"
+            android:background="@color/widget_divider"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no" />
 
-    <TextView
-        android:id="@+id/textMinutesLeft"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="@string/widget_minutes_placeholder"
-        android:textColor="@color/widget_accent"
-        android:textSize="13sp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/main_hero_section_next"
+            android:textColor="@color/widget_on_surface_muted"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/textNextDeparture"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/widget_next_placeholder"
+            android:textColor="@color/widget_on_surface"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/textMinutesLeft"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/widget_minutes_placeholder"
+            android:textColor="@color/widget_accent"
+            android:textSize="13sp" />
+    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"

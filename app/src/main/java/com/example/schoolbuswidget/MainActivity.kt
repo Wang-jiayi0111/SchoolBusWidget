@@ -6,8 +6,11 @@ import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import com.example.schoolbuswidget.ui.timetable.TimetableManageActivity
+import com.example.schoolbuswidget.ui.DepartureHourGroupAdapter
 import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.example.schoolbuswidget.data.TimetableDataStoreRepository
 import com.example.schoolbuswidget.data.WidgetPreferenceRepository
 import com.example.schoolbuswidget.data.holiday.HolidayCalendarRepository
@@ -25,10 +28,12 @@ import java.time.LocalDateTime
 class MainActivity : AppCompatActivity() {
     private var selectedLocation = CampusLocation.NORTH
     private var dayTypeMode = WidgetPreferenceRepository.DAY_TYPE_MODE_AUTO
+    private val departureListAdapter = DepartureHourGroupAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        setupDepartureListRecycler()
         loadSelectionFromPreferences()
         setupAppControls()
         renderAppTimetable()
@@ -38,6 +43,13 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         loadSelectionFromPreferences()
         renderAppTimetable()
+    }
+
+    private fun setupDepartureListRecycler() {
+        val recycler = findViewById<RecyclerView>(R.id.recyclerDepartureList)
+        recycler.layoutManager = LinearLayoutManager(this)
+        recycler.adapter = departureListAdapter
+        recycler.isNestedScrollingEnabled = false
     }
 
     private fun setupAppControls() {
@@ -98,7 +110,9 @@ class MainActivity : AppCompatActivity() {
         val nextDepartureText = findViewById<TextView>(R.id.textAppNextDeparture)
         val heroTimeText = findViewById<TextView>(R.id.textNextTimeHero)
         val minutesLeftText = findViewById<TextView>(R.id.textAppMinutesLeft)
-        val departureListText = findViewById<TextView>(R.id.textDepartureList)
+        val departureListSummary = findViewById<TextView>(R.id.textDepartureListSummary)
+        val departureListEmpty = findViewById<TextView>(R.id.textDepartureListEmpty)
+        val departureListRecycler = findViewById<RecyclerView>(R.id.recyclerDepartureList)
         val sourceText = findViewById<TextView>(R.id.textDayTypeSource)
 
         runBlocking {
@@ -130,22 +144,31 @@ class MainActivity : AppCompatActivity() {
                     minutesLeftText.text = getString(R.string.main_minutes_left, nextResult.minutesLeft)
                 }
 
-                departureListText.text = getString(
-                    R.string.main_departure_list_item_prefix,
-                    departures.toDisplayString(),
-                )
+                val times = departures.map { it.time }
+                if (times.isEmpty()) {
+                    departureListSummary.visibility = View.GONE
+                    departureListRecycler.visibility = View.GONE
+                    departureListEmpty.visibility = View.VISIBLE
+                } else {
+                    departureListSummary.visibility = View.VISIBLE
+                    departureListSummary.text = getString(
+                        R.string.main_departure_list_summary,
+                        times.size,
+                    )
+                    departureListRecycler.visibility = View.VISIBLE
+                    departureListEmpty.visibility = View.GONE
+                    departureListAdapter.submit(times)
+                }
             } catch (e: Exception) {
                 AppLog.e("Main screen timetable render failed", e)
                 heroTimeText.text = getString(R.string.main_time_placeholder)
                 nextDepartureText.visibility = View.VISIBLE
                 nextDepartureText.text = getString(R.string.main_error_generic)
                 minutesLeftText.text = ""
+                departureListSummary.visibility = View.GONE
+                departureListRecycler.visibility = View.GONE
+                departureListEmpty.visibility = View.VISIBLE
             }
         }
-    }
-
-    private fun List<DepartureTime>.toDisplayString(): String {
-        if (isEmpty()) return getString(R.string.main_departure_list_placeholder)
-        return joinToString("、") { it.time.toString() }
     }
 }
