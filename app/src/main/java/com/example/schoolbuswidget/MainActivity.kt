@@ -3,11 +3,12 @@ package com.example.schoolbuswidget
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.Button
 import android.widget.TextView
 import com.example.schoolbuswidget.ui.timetable.TimetableManageActivity
 import com.example.schoolbuswidget.ui.DepartureHourGroupAdapter
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -29,13 +30,20 @@ class MainActivity : AppCompatActivity() {
     private var selectedLocation = CampusLocation.NORTH
     private var dayTypeMode = WidgetPreferenceRepository.DAY_TYPE_MODE_AUTO
     private val departureListAdapter = DepartureHourGroupAdapter()
+    private var syncingSelectionChips = false
+
+    private lateinit var chipAppNorth: Chip
+    private lateinit var chipAppSouth: Chip
+    private lateinit var chipAppAuto: Chip
+    private lateinit var chipAppWorkday: Chip
+    private lateinit var chipAppHoliday: Chip
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         setupDepartureListRecycler()
-        loadSelectionFromPreferences()
         setupAppControls()
+        loadSelectionFromPreferences()
         renderAppTimetable()
     }
 
@@ -53,22 +61,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupAppControls() {
-        val toggleLocationButton = findViewById<Button>(R.id.buttonAppToggleLocation)
-        val toggleDayTypeButton = findViewById<Button>(R.id.buttonAppToggleDayType)
+        chipAppNorth = findViewById(R.id.chipAppNorth)
+        chipAppSouth = findViewById(R.id.chipAppSouth)
+        chipAppAuto = findViewById(R.id.chipAppAuto)
+        chipAppWorkday = findViewById(R.id.chipAppWorkday)
+        chipAppHoliday = findViewById(R.id.chipAppHoliday)
 
-        toggleLocationButton.setOnClickListener {
-            selectedLocation = if (selectedLocation == CampusLocation.NORTH) {
-                CampusLocation.SOUTH
-            } else {
-                CampusLocation.NORTH
+        findViewById<ChipGroup>(R.id.chipGroupAppCampus).setOnCheckedStateChangeListener { _, checkedIds ->
+            if (syncingSelectionChips || checkedIds.isEmpty()) return@setOnCheckedStateChangeListener
+            selectedLocation = when (checkedIds.first()) {
+                R.id.chipAppNorth -> CampusLocation.NORTH
+                else -> CampusLocation.SOUTH
             }
             persistSelectionAndSyncWidget()
             renderAppTimetable()
         }
 
-        toggleDayTypeButton.setOnClickListener {
-            runBlocking {
-                dayTypeMode = WidgetPreferenceRepository(this@MainActivity).cycleDayTypeMode()
+        findViewById<ChipGroup>(R.id.chipGroupAppDayType).setOnCheckedStateChangeListener { _, checkedIds ->
+            if (syncingSelectionChips || checkedIds.isEmpty()) return@setOnCheckedStateChangeListener
+            dayTypeMode = when (checkedIds.first()) {
+                R.id.chipAppWorkday -> WidgetPreferenceRepository.DAY_TYPE_MODE_MANUAL_WORKDAY
+                R.id.chipAppHoliday -> WidgetPreferenceRepository.DAY_TYPE_MODE_MANUAL_HOLIDAY
+                else -> WidgetPreferenceRepository.DAY_TYPE_MODE_AUTO
             }
             persistSelectionAndSyncWidget()
             renderAppTimetable()
@@ -77,6 +91,18 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.buttonAppManageTimetable).setOnClickListener {
             startActivity(Intent(this, TimetableManageActivity::class.java))
         }
+    }
+
+    private fun syncSelectionChipsFromState() {
+        syncingSelectionChips = true
+        chipAppNorth.isChecked = selectedLocation == CampusLocation.NORTH
+        chipAppSouth.isChecked = selectedLocation == CampusLocation.SOUTH
+        when (dayTypeMode) {
+            WidgetPreferenceRepository.DAY_TYPE_MODE_MANUAL_WORKDAY -> chipAppWorkday.isChecked = true
+            WidgetPreferenceRepository.DAY_TYPE_MODE_MANUAL_HOLIDAY -> chipAppHoliday.isChecked = true
+            else -> chipAppAuto.isChecked = true
+        }
+        syncingSelectionChips = false
     }
 
     private fun loadSelectionFromPreferences() {
@@ -89,6 +115,7 @@ class MainActivity : AppCompatActivity() {
             }
             dayTypeMode = preferences.getDayTypeMode()
         }
+        syncSelectionChipsFromState()
     }
 
     private fun persistSelectionAndSyncWidget() {

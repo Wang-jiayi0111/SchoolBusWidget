@@ -4,25 +4,23 @@ import com.example.schoolbuswidget.data.rapidocr.OcrTextLine
 import java.time.LocalTime
 
 /**
- * Structured parser for the SZTU north-campus "高峰专线655" timetable poster layout
- * (same assumptions as [tools.extract_north_timetable]).
- *
- * Expects OCR lines from a **cropped schedule region** bitmap (not the full marketing poster).
+ * Structured parser for the SZTU south-campus "高峰专线655" timetable poster
+ * (same assumptions as [tools.extract_south_timetable]).
  */
-object NorthPeak655PosterParser {
+object SouthPeak655PosterParser {
 
     private val layout = Peak655ScheduleParser.Layout(
-        hourRange = 6..22,
-        startHourLeftMarker = "06",
-        refImgW = 1536f,
-        refImgH = 1232f,
-        refHourXMax = 108f,
-        refWorkXMin = 120f,
+        hourRange = 7..22,
+        startHourLeftMarker = "07",
+        refImgW = 1902f,
+        refImgH = 1650f,
+        refHourXMax = 127f,
+        refWorkXMin = 141f,
         refMicroY = 14f,
         refMergeGap = 36f,
-        splitFallbackFraction = 0.52f,
-        hour08EveryThreeWorkday = true,
-        emptyHour06Rule = true,
+        splitFallbackFraction = 0.66f,
+        hour08EveryThreeWorkday = false,
+        emptyHour06Rule = false,
     )
 
     data class Result(

@@ -7,4 +7,7 @@
     <dimen name="hero_time_text">44sp</dimen>
     <dimen name="widget_corner">14dp</dimen>
     <dimen name="dialog_edit_padding">16dp</dimen>
+    <dimen name="dialog_import_preview_max_height">420dp</dimen>
+    <dimen name="dialog_import_preview_section_gap">20dp</dimen>
+    <dimen name="dialog_import_preview_block_gap">10dp</dimen>
 </resources>

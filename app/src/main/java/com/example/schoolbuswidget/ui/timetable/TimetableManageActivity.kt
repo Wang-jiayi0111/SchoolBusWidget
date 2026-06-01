@@ -5,6 +5,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.graphics.Typeface
+import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -24,6 +27,7 @@ import com.example.schoolbuswidget.data.rapidocr.RapidOcrRecognizer
 import com.example.schoolbuswidget.domain.CampusLocation
 import com.example.schoolbuswidget.domain.DepartureTime
 import com.example.schoolbuswidget.domain.NorthPeak655PosterParser
+import com.example.schoolbuswidget.domain.SouthPeak655PosterParser
 import com.example.schoolbuswidget.domain.ServiceDayType
 import com.example.schoolbuswidget.BuildConfig
 import com.example.schoolbuswidget.domain.TimetableImportParser
@@ -288,8 +292,8 @@ class TimetableManageActivity : AppCompatActivity() {
                     }
                 }
                 when (outcome) {
-                    is OcrImportOutcome.NorthDual ->
-                        showNorthDualImageImportDialog(outcome.workday, outcome.holiday)
+                    is OcrImportOutcome.PosterDual ->
+                        showPosterDualImageImportDialog(outcome.campus, outcome.workday, outcome.holiday)
                     is OcrImportOutcome.Single ->
                         showImportMergeDialog(outcome.times)
                 }
@@ -306,54 +310,54 @@ class TimetableManageActivity : AppCompatActivity() {
     }
 
     private sealed class OcrImportOutcome {
-        data class NorthDual(val workday: List<LocalTime>, val holiday: List<LocalTime>) : OcrImportOutcome()
+        data class PosterDual(
+            val campus: CampusLocation,
+            val workday: List<LocalTime>,
+            val holiday: List<LocalTime>,
+        ) : OcrImportOutcome()
+
         data class Single(val times: List<LocalTime>) : OcrImportOutcome()
     }
 
     /**
-     * North 655 poster: when both columns parse well, return [NorthDual] so the UI can save both without
-     * switching the day-type chip. Otherwise same as before (single list for merge/replace on screen).
+     * 655 poster: when both columns parse well, return [PosterDual] so the UI can save both without
+     * switching the day-type chip. Otherwise fall back to flat OCR for the selected column.
      */
     private fun ocrBitmapToOutcome(
         decoded: Bitmap,
         campus: CampusLocation,
         dayType: ServiceDayType,
     ): OcrImportOutcome {
+        when (campus) {
+            CampusLocation.NORTH -> {
+                tryStructuredPosterImport(
+                    decoded = decoded,
+                    campus = campus,
+                    dayType = dayType,
+                    crop = { OcrBitmapPreprocessor.cropNorthScheduleRegion(it) },
+                    parse = { lines, w, h, scale ->
+                        NorthPeak655PosterParser.tryParse(lines, w, h, scale)?.let {
+                            PosterParseResult(it.workday, it.holiday)
+                        }
+                    },
+                )?.let { return it }
+            }
+            CampusLocation.SOUTH -> {
+                tryStructuredPosterImport(
+                    decoded = decoded,
+                    campus = campus,
+                    dayType = dayType,
+                    crop = { OcrBitmapPreprocessor.cropSouthScheduleRegion(it) },
+                    parse = { lines, w, h, scale ->
+                        SouthPeak655PosterParser.tryParse(lines, w, h, scale)?.let {
+                            PosterParseResult(it.workday, it.holiday)
+                        }
+                    },
+                )?.let { return it }
+            }
+        }
         val prep = OcrBitmapPreprocessor.preprocessForTimetableOcr(decoded)
         try {
-            if (campus == CampusLocation.NORTH) {
-                TimetableOcrDebugDump.savePng(this, prep, "ocr_prep.png")
-                val cropped = OcrBitmapPreprocessor.cropNorthScheduleRegion(prep)
-                TimetableOcrDebugDump.savePng(this, cropped, "ocr_cropped.png")
-                val (scaled, appliedScale) = OcrBitmapPreprocessor.upscaleForScheduleOcr(cropped)
-                if (scaled !== cropped && !cropped.isRecycled) cropped.recycle()
-                try {
-                    TimetableOcrDebugDump.savePng(this, scaled, "ocr_scaled.png")
-                    val lines = RapidOcrRecognizer.recognizeLines(scaled, this)
-                    val structured = NorthPeak655PosterParser.tryParse(
-                        lines,
-                        scaled.width,
-                        scaled.height,
-                        appliedScale,
-                    )
-                    if (structured != null) {
-                        val wdOk = structured.workday.size >= MIN_NORTH_STRUCTURED_DEPARTURES
-                        val holOk = structured.holiday.size >= MIN_NORTH_HOLIDAY_DEPARTURES
-                        if (wdOk && holOk) {
-                            return OcrImportOutcome.NorthDual(structured.workday, structured.holiday)
-                        }
-                        val column = when (dayType) {
-                            ServiceDayType.WORKDAY -> structured.workday
-                            ServiceDayType.HOLIDAY -> structured.holiday
-                        }
-                        if (column.size >= MIN_NORTH_STRUCTURED_DEPARTURES) {
-                            return OcrImportOutcome.Single(column)
-                        }
-                    }
-                } finally {
-                    if (!scaled.isRecycled) scaled.recycle()
-                }
-            }
             val flat = TimetableImportParser.extractTimesFromText(
                 RapidOcrRecognizer.recognizeText(prep, this),
             )
@@ -363,74 +367,247 @@ class TimetableManageActivity : AppCompatActivity() {
         }
     }
 
-    private fun showNorthDualImageImportDialog(workday: List<LocalTime>, holiday: List<LocalTime>) {
-        val wdPrev = previewTimesForDialog(workday)
-        val hdPrev = previewTimesForDialog(holiday)
-        AlertDialog.Builder(this)
-            .setTitle(R.string.timetable_import_north_dual_title)
-            .setMessage(
-                getString(
-                    R.string.timetable_import_north_dual_message,
-                    workday.size,
-                    wdPrev,
-                    holiday.size,
-                    hdPrev,
-                ),
-            )
-            .setPositiveButton(R.string.timetable_import_north_dual_save_both) { _, _ ->
-                saveNorthBothColumns(workday, holiday)
+    private data class PosterParseResult(
+        val workday: List<LocalTime>,
+        val holiday: List<LocalTime>,
+    )
+
+    private fun tryStructuredPosterImport(
+        decoded: Bitmap,
+        campus: CampusLocation,
+        dayType: ServiceDayType,
+        crop: (Bitmap) -> Bitmap,
+        parse: (lines: List<com.example.schoolbuswidget.data.rapidocr.OcrTextLine>, Int, Int, Float) ->
+            PosterParseResult?,
+    ): OcrImportOutcome? {
+        val cropped = crop(decoded)
+        TimetableOcrDebugDump.savePng(this, cropped, "ocr_cropped.png")
+        val prep = OcrBitmapPreprocessor.preprocessForTimetableOcr(cropped)
+        if (cropped !== decoded && !cropped.isRecycled) cropped.recycle()
+        TimetableOcrDebugDump.savePng(this, prep, "ocr_prep.png")
+        val (scaled, appliedScale) = OcrBitmapPreprocessor.upscaleForScheduleOcr(prep)
+        if (scaled !== prep && !prep.isRecycled) prep.recycle()
+        try {
+            TimetableOcrDebugDump.savePng(this, scaled, "ocr_scaled.png")
+            val lines = RapidOcrRecognizer.recognizeLines(scaled, this)
+            val structured = parse(lines, scaled.width, scaled.height, appliedScale) ?: return null
+            val wdOk = structured.workday.size >= MIN_STRUCTURED_WORKDAY_DEPARTURES
+            val holOk = structured.holiday.size >= MIN_STRUCTURED_HOLIDAY_DEPARTURES
+            if (wdOk && holOk) {
+                return OcrImportOutcome.PosterDual(campus, structured.workday, structured.holiday)
             }
-            .setNeutralButton(R.string.timetable_import_north_dual_save_one) { _, _ ->
+            val column = when (dayType) {
+                ServiceDayType.WORKDAY -> structured.workday
+                ServiceDayType.HOLIDAY -> structured.holiday
+            }
+            if (column.size >= MIN_STRUCTURED_WORKDAY_DEPARTURES) {
+                return OcrImportOutcome.Single(column)
+            }
+            return null
+        } finally {
+            if (!scaled.isRecycled) scaled.recycle()
+        }
+    }
+
+    private fun showPosterDualImageImportDialog(
+        campus: CampusLocation,
+        workday: List<LocalTime>,
+        holiday: List<LocalTime>,
+    ) {
+        val previewScroll = buildImportPreviewScrollView {
+            appendImportPreviewColumn(
+                getString(
+                    R.string.timetable_import_preview_column_header,
+                    getString(R.string.label_day_workday),
+                    workday.size,
+                ),
+                workday,
+            )
+            appendImportPreviewSectionSpacer()
+            appendImportPreviewColumn(
+                getString(
+                    R.string.timetable_import_preview_column_header,
+                    getString(R.string.label_day_holiday),
+                    holiday.size,
+                ),
+                holiday,
+            )
+        }
+        val titleRes = when (campus) {
+            CampusLocation.NORTH -> R.string.timetable_import_north_dual_title
+            CampusLocation.SOUTH -> R.string.timetable_import_south_dual_title
+        }
+        val savedBothRes = when (campus) {
+            CampusLocation.NORTH -> R.string.timetable_import_north_dual_saved_both
+            CampusLocation.SOUTH -> R.string.timetable_import_south_dual_saved_both
+        }
+        val savedOneRes = when (campus) {
+            CampusLocation.NORTH -> R.string.timetable_import_north_dual_saved_one
+            CampusLocation.SOUTH -> R.string.timetable_import_south_dual_saved_one
+        }
+        AlertDialog.Builder(this)
+            .setTitle(titleRes)
+            .setView(previewScroll)
+            .setPositiveButton(R.string.timetable_import_poster_dual_save_both) { _, _ ->
+                savePosterBothColumns(campus, workday, holiday, savedBothRes)
+            }
+            .setNeutralButton(R.string.timetable_import_poster_dual_save_one) { _, _ ->
                 val only = when (selectedDayType()) {
                     ServiceDayType.WORKDAY -> workday
                     ServiceDayType.HOLIDAY -> holiday
                 }
-                saveNorthOneColumn(selectedDayType(), only)
+                savePosterOneColumn(campus, selectedDayType(), only, savedOneRes)
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 
-    private fun previewTimesForDialog(times: List<LocalTime>, maxShow: Int = 8): String {
-        val head = times.take(maxShow).joinToString("、") { it.toString() }
-        return if (times.size > maxShow) "$head…" else head
+    private class ImportPreviewLayout(private val container: LinearLayout) {
+        private val context get() = container.context
+
+        fun appendImportPreviewColumn(title: String, times: List<LocalTime>) {
+            container.addView(
+                TextView(context).apply {
+                    text = title
+                    textSize = 16f
+                    setTypeface(typeface, Typeface.BOLD)
+                },
+            )
+            if (times.isEmpty()) {
+                container.addView(
+                    TextView(context).apply {
+                        text = context.getString(R.string.timetable_import_preview_none)
+                        textSize = 14f
+                        setPadding(0, blockGapPx(), 0, 0)
+                    },
+                )
+                return
+            }
+            times.distinct().sorted()
+                .groupBy { it.hour }
+                .toSortedMap()
+                .forEach { (hour, hourTimes) ->
+                    container.addView(
+                        TextView(context).apply {
+                            text = context.getString(
+                                R.string.timetable_hour_section,
+                                hour,
+                                hourTimes.size,
+                            )
+                            textSize = 14f
+                            setTypeface(typeface, Typeface.BOLD)
+                            setPadding(0, blockGapPx(), 0, 0)
+                        },
+                    )
+                    hourTimes.forEach { time ->
+                        container.addView(
+                            TextView(context).apply {
+                                text = time.toString()
+                                textSize = 14f
+                                setPadding(timeIndentPx(), 0, 0, timeLineGapPx())
+                                setTextIsSelectable(true)
+                            },
+                        )
+                    }
+                }
+        }
+
+        fun appendImportPreviewSectionSpacer() {
+            container.addView(
+                View(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        sectionGapPx(),
+                    )
+                },
+            )
+        }
+
+        fun appendImportPreviewFooter(text: CharSequence) {
+            container.addView(
+                TextView(context).apply {
+                    this.text = text
+                    textSize = 14f
+                    setPadding(0, sectionGapPx(), 0, 0)
+                },
+            )
+        }
+
+        private fun sectionGapPx(): Int =
+            context.resources.getDimensionPixelSize(R.dimen.dialog_import_preview_section_gap)
+
+        private fun blockGapPx(): Int =
+            context.resources.getDimensionPixelSize(R.dimen.dialog_import_preview_block_gap)
+
+        private fun timeIndentPx(): Int = (12 * context.resources.displayMetrics.density).toInt()
+
+        private fun timeLineGapPx(): Int = (2 * context.resources.displayMetrics.density).toInt()
     }
 
-    private fun saveNorthBothColumns(workday: List<LocalTime>, holiday: List<LocalTime>) {
+    private fun buildImportPreviewScrollView(
+        block: ImportPreviewLayout.() -> Unit,
+    ): ScrollView {
+        val pad = resources.getDimensionPixelSize(R.dimen.dialog_edit_padding)
+        val maxHeight = resources.getDimensionPixelSize(R.dimen.dialog_import_preview_max_height)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        ImportPreviewLayout(container).block()
+        return ScrollView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                maxHeight,
+            )
+            addView(container)
+        }
+    }
+
+    private fun savePosterBothColumns(
+        campus: CampusLocation,
+        workday: List<LocalTime>,
+        holiday: List<LocalTime>,
+        savedToastRes: Int,
+    ) {
         lifecycleScope.launch {
             repository.saveDepartures(
-                CampusLocation.NORTH,
+                campus,
                 ServiceDayType.WORKDAY,
                 workday.distinct().sorted().map { DepartureTime(it) },
             )
             repository.saveDepartures(
-                CampusLocation.NORTH,
+                campus,
                 ServiceDayType.HOLIDAY,
                 holiday.distinct().sorted().map { DepartureTime(it) },
             )
             loadTimetableForSelection()
-            Toast.makeText(this@TimetableManageActivity, R.string.timetable_import_north_dual_saved_both, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@TimetableManageActivity, savedToastRes, Toast.LENGTH_SHORT).show()
             refreshHomeWidgets()
         }
     }
 
-    private fun saveNorthOneColumn(dayType: ServiceDayType, times: List<LocalTime>) {
+    private fun savePosterOneColumn(
+        campus: CampusLocation,
+        dayType: ServiceDayType,
+        times: List<LocalTime>,
+        savedToastRes: Int,
+    ) {
         lifecycleScope.launch {
             repository.saveDepartures(
-                CampusLocation.NORTH,
+                campus,
                 dayType,
                 times.distinct().sorted().map { DepartureTime(it) },
             )
             loadTimetableForSelection()
-            Toast.makeText(this@TimetableManageActivity, R.string.timetable_import_north_dual_saved_one, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@TimetableManageActivity, savedToastRes, Toast.LENGTH_SHORT).show()
             refreshHomeWidgets()
         }
     }
 
     companion object {
-        /** If structured north parse yields at least this many times, trust it over flat OCR. */
-        private const val MIN_NORTH_STRUCTURED_DEPARTURES = 12
-        private const val MIN_NORTH_HOLIDAY_DEPARTURES = 8
+        /** If structured poster parse yields at least this many times, trust it over flat OCR. */
+        private const val MIN_STRUCTURED_WORKDAY_DEPARTURES = 12
+        private const val MIN_STRUCTURED_HOLIDAY_DEPARTURES = 8
     }
 
     private fun decodeBitmapMaxSide(uri: Uri, maxSide: Int): Bitmap? {
@@ -453,10 +630,18 @@ class TimetableManageActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.timetable_import_empty, Toast.LENGTH_SHORT).show()
             return
         }
-        val preview = parsed.joinToString("、") { it.toString() }
+        val previewScroll = buildImportPreviewScrollView {
+            appendImportPreviewColumn(
+                getString(R.string.main_departure_list_summary, parsed.size),
+                parsed,
+            )
+            appendImportPreviewFooter(
+                getString(R.string.timetable_import_result_message, parsed.size),
+            )
+        }
         AlertDialog.Builder(this)
             .setTitle(R.string.timetable_import_result_title)
-            .setMessage(getString(R.string.timetable_import_result_message, parsed.size, preview))
+            .setView(previewScroll)
             .setPositiveButton(R.string.timetable_import_replace) { _, _ ->
                 times.clear()
                 times.addAll(parsed)

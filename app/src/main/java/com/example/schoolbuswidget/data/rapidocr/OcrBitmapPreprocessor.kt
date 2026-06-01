@@ -10,17 +10,21 @@ import kotlin.math.roundToInt
 
 /**
  * Light preprocessing to help line OCR on timetable photos: grayscale + mild contrast lift.
- * Heavier pipelines (CLAHE / denoise) need OpenCV; this stays dependency-free.
+ * Python tools also apply CLAHE/denoise (OpenCV); poster OCR uses crop → preprocess → upscale
+ * like tools/extract_*_timetable.py.
  */
 object OcrBitmapPreprocessor {
 
     /** Default crop for north-campus 655 timetable poster (same as tools/extract_north_timetable.py). */
-    fun cropNorthScheduleRegion(source: Bitmap): Bitmap {
+    fun cropNorthScheduleRegion(source: Bitmap): Bitmap =
+        cropRelativeRegion(source, l = 0.01f, t = 0.27f, r = 0.64f, b = 0.72f)
+
+    /** Default crop for south-campus 655 timetable poster (same as tools/extract_south_timetable.py SOUTH_CROP). */
+    fun cropSouthScheduleRegion(source: Bitmap): Bitmap =
+        cropRelativeRegion(source, l = 0.01f, t = 0.24f, r = 1.00f, b = 0.91f)
+
+    private fun cropRelativeRegion(source: Bitmap, l: Float, t: Float, r: Float, b: Float): Bitmap {
         if (source.isRecycled) throw IllegalArgumentException("bitmap recycled")
-        val l = 0.01f
-        val t = 0.27f
-        val r = 0.64f
-        val b = 0.72f
         val x1 = (source.width * l).toInt().coerceIn(0, max(0, source.width - 1))
         val y1 = (source.height * t).toInt().coerceIn(0, max(0, source.height - 1))
         val x2 = (source.width * r).toInt().coerceIn(x1 + 1, source.width)
@@ -28,10 +32,6 @@ object OcrBitmapPreprocessor {
         return Bitmap.createBitmap(source, x1, y1, x2 - x1, y2 - y1)
     }
 
-    /**
-     * ~1.5× upscale like the Python extractor, capped by [maxLongSide].
-     * @return scaled bitmap and the effective scale factor vs [source] (for structured parser tuning).
-     */
     fun upscaleForScheduleOcr(source: Bitmap, scale: Float = 1.5f, maxLongSide: Int = 2048): Pair<Bitmap, Float> {
         if (source.isRecycled) throw IllegalArgumentException("bitmap recycled")
         var outW = (source.width * scale).roundToInt().coerceAtLeast(1)

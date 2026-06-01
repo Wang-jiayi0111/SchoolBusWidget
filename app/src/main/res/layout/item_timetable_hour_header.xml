@@ -1,11 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/textHourHeader"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
     android:paddingTop="14dp"
-    android:paddingBottom="6dp"
-    android:textAppearance="?attr/textAppearanceTitleSmall"
-    android:textColor="?attr/colorPrimary"
-    tools:text="08 时 · 13 班" />
+    android:paddingBottom="6dp">
+
+    <TextView
+        android:id="@+id/textHourHeader"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textAppearance="?attr/textAppearanceTitleSmall"
+        android:textColor="?attr/colorPrimary"
+        tools:text="08 时 · 13 班" />
+
+    <ImageView
+        android:id="@+id/imageExpandToggle"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        tools:src="@drawable/ic_expand_more_24" />
+</LinearLayout>

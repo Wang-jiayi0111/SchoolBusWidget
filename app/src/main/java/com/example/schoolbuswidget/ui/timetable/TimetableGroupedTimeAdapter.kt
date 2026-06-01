@@ -3,6 +3,7 @@ package com.example.schoolbuswidget.ui.timetable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.schoolbuswidget.R
@@ -15,6 +16,7 @@ class TimetableGroupedTimeAdapter(
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val items = mutableListOf<ListItem>()
+    private val expandedHours = mutableSetOf<Int>()
 
     init {
         rebuildItems()
@@ -27,12 +29,24 @@ class TimetableGroupedTimeAdapter(
             .groupBy { it.value.hour }
             .toSortedMap()
             .forEach { (hour, indexed) ->
-                items.add(ListItem.Header(hour, indexed.size))
-                indexed.forEach { (index, time) ->
-                    items.add(ListItem.TimeRow(index, time))
+                val expanded = hour in expandedHours
+                items.add(ListItem.Header(hour, indexed.size, expanded))
+                if (expanded) {
+                    indexed.forEach { (index, time) ->
+                        items.add(ListItem.TimeRow(index, time))
+                    }
                 }
             }
         notifyDataSetChanged()
+    }
+
+    private fun toggleHour(hour: Int) {
+        if (hour in expandedHours) {
+            expandedHours.remove(hour)
+        } else {
+            expandedHours.add(hour)
+        }
+        rebuildItems()
     }
 
     override fun getItemViewType(position: Int): Int = when (items[position]) {
@@ -61,6 +75,14 @@ class TimetableGroupedTimeAdapter(
                     item.hour,
                     item.count,
                 )
+                h.expandIcon.setImageResource(
+                    if (item.expanded) R.drawable.ic_expand_less_24 else R.drawable.ic_expand_more_24,
+                )
+                h.itemView.contentDescription = h.itemView.context.getString(
+                    if (item.expanded) R.string.timetable_hour_collapse else R.string.timetable_hour_expand,
+                    item.hour,
+                )
+                h.itemView.setOnClickListener { toggleHour(item.hour) }
             }
             is ListItem.TimeRow -> {
                 val h = holder as TimeHolder
@@ -79,12 +101,13 @@ class TimetableGroupedTimeAdapter(
     override fun getItemCount(): Int = items.size
 
     private sealed class ListItem {
-        data class Header(val hour: Int, val count: Int) : ListItem()
+        data class Header(val hour: Int, val count: Int, val expanded: Boolean) : ListItem()
         data class TimeRow(val indexInList: Int, val time: LocalTime) : ListItem()
     }
 
     private class HeaderHolder(view: View) : RecyclerView.ViewHolder(view) {
         val text: TextView = view.findViewById(R.id.textHourHeader)
+        val expandIcon: ImageView = view.findViewById(R.id.imageExpandToggle)
     }
 
     private class TimeHolder(view: View) : RecyclerView.ViewHolder(view) {

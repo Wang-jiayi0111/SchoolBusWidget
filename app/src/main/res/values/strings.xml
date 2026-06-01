@@ -1,10 +1,9 @@
 <resources>
-    <string name="app_name">校巴发车</string>
+    <string name="app_name">时间助手</string>
     <string name="main_screen_headline">发车一览</string>
-    <string name="main_screen_subtitle">根据校区与日程显示下一班及剩余时间</string>
     <string name="main_hero_section_next">下一班发车</string>
     <string name="main_time_placeholder">--:--</string>
-    <string name="main_section_actions">快捷切换</string>
+    <string name="main_section_actions">校区与日程</string>
     <string name="main_tip_add_widget">请长按桌面并添加“校巴发车提醒”组件查看效果</string>
     <string name="main_self_check_pending">组件注册自检中...</string>
     <string name="main_self_check_ok">自检通过：系统已识别到校巴组件（%1$d 个）。</string>
@@ -19,6 +18,8 @@
     <string name="main_departure_list_summary">共 %1$d 班 · 按小时分组</string>
     <string name="main_departure_list_placeholder">暂无班次</string>
     <string name="timetable_hour_section">%1$02d 时 · %2$d 班</string>
+    <string name="timetable_hour_expand">展开 %1$02d 时班次</string>
+    <string name="timetable_hour_collapse">收起 %1$02d 时班次</string>
     <string name="main_no_departure">今日无后续班次</string>
     <string name="widget_title">校巴发车提醒</string>
     <string name="widget_description">显示下一班校巴发车时间</string>
@@ -68,17 +69,25 @@
     <string name="timetable_import_text_north_dual_title">文字导入（北区）</string>
     <string name="timetable_import_text_north_dual_save">解析并保存两列</string>
     <string name="timetable_import_text_north_dual_empty">请至少在一栏中粘贴含时间的文字</string>
-    <string name="timetable_import_north_dual_title">北区识别结果（一图两列）</string>
-    <string name="timetable_import_north_dual_message">工作日 %1$d 班：%2$s\n假期 %3$d 班：%4$s</string>
-    <string name="timetable_import_north_dual_save_both">同时保存工作日与假期</string>
-    <string name="timetable_import_north_dual_save_one">仅保存当前所选（工作日或假期）</string>
+    <string name="timetable_import_north_dual_title">北区识别结果</string>
+    <string name="timetable_import_south_dual_title">南区识别结果（一图两列）</string>
+    <string name="timetable_import_poster_dual_message">工作日 %1$d 班：%2$s\n假期 %3$d 班：%4$s</string>
+    <string name="timetable_import_poster_dual_save_both">同时保存工作日与假期</string>
+    <string name="timetable_import_poster_dual_save_one">仅保存当前所选（工作日或假期）</string>
     <string name="timetable_import_north_dual_saved_both">已保存北区工作日与假期时刻表</string>
-    <string name="timetable_import_north_text_saved">已保存北区时刻表（有内容的列已写入）</string>
+    <string name="timetable_import_south_dual_saved_both">已保存南区工作日与假期时刻表</string>
     <string name="timetable_import_north_dual_saved_one">已保存当前所选列</string>
+    <string name="timetable_import_south_dual_saved_one">已保存当前所选列</string>
+    <!-- legacy aliases kept for older references -->
+    <string name="timetable_import_north_dual_message">@string/timetable_import_poster_dual_message</string>
+    <string name="timetable_import_north_dual_save_both">@string/timetable_import_poster_dual_save_both</string>
+    <string name="timetable_import_north_text_saved">已保存北区时刻表（有内容的列已写入）</string>
     <string name="timetable_import_parse">解析时间</string>
     <string name="timetable_import_empty">未识别到有效时间（格式如 8:00、14:30）</string>
     <string name="timetable_import_result_title">识别结果</string>
-    <string name="timetable_import_result_message">共识别 %1$d 个时间：\n%2$s\n\n选择替换当前列表，或与当前列表合并（去重）。</string>
+    <string name="timetable_import_result_message">共识别 %1$d 个时间。\n\n选择替换当前列表，或与当前列表合并（去重）。</string>
+    <string name="timetable_import_preview_none">（无）</string>
+    <string name="timetable_import_preview_column_header">%1$s · %2$d 班</string>
     <string name="timetable_import_replace">替换列表</string>
     <string name="timetable_import_merge">合并去重</string>
     <string name="timetable_image_load_fail">无法读取图片</string>

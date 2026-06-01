@@ -428,6 +428,21 @@ def main() -> None:
     print(f"Wrote {raw_path}")
     print(f"Wrote {out_path}")
 
+    from compare_poster_to_golden import compare, load_json
+
+    golden_path = out_dir / "north_timetable_golden.json"
+    if golden_path.is_file():
+        diffs = compare(load_json(golden_path), payload, range(6, 23))
+        if diffs:
+            print(f"\nCompare vs golden: MISMATCH ({len(diffs)} hour column(s))")
+            for block in diffs:
+                print(block)
+            print(f"\nGolden (authoritative): {golden_path}")
+        else:
+            print(f"\nCompare vs golden: OK — matches {golden_path.name}")
+    else:
+        print(f"\nCompare vs golden: skipped ({golden_path.name} not found)")
+
 
 if __name__ == "__main__":
     main()
