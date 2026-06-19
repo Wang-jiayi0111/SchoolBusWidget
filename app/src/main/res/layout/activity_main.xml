@@ -17,20 +17,29 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/main_screen_headline"
-            android:textAppearance="?attr/textAppearanceHeadlineSmall"
-            android:textColor="?attr/colorOnSurface" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/main_screen_subtitle"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textColor="?attr/colorOnSurfaceVariant" />
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/main_screen_headline"
+                android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                android:textColor="?attr/colorOnSurface" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonAppManageTimetable"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/main_open_timetable_editor"
+                app:icon="@drawable/ic_edit_24"
+                app:iconTint="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
 
         <!-- 下一班 -->
         <com.google.android.material.card.MaterialCardView
@@ -167,15 +176,6 @@
                 android:layout_height="wrap_content"
                 android:text="@string/label_day_holiday" />
         </com.google.android.material.chip.ChipGroup>
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/buttonAppManageTimetable"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="@string/main_open_timetable_editor"
-            android:textAllCaps="false"
-            app:cornerRadius="12dp" />
 
         <!-- 当日班次 -->
         <com.google.android.material.card.MaterialCardView

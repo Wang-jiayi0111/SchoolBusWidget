@@ -1,5 +1,6 @@
 package com.example.schoolbuswidget
 
+import com.example.schoolbuswidget.data.holiday.HolidayDataOrigin
 import com.example.schoolbuswidget.data.holiday.HolidayCalendarSource
 import com.example.schoolbuswidget.data.holiday.HolidayDayLookup
 import com.example.schoolbuswidget.domain.DayTypeResolutionSource
@@ -15,7 +16,7 @@ class EffectiveDayTypeResolverTest {
     @Test
     fun network_rest_day_maps_to_holiday_schedule() = runTest {
         val source = HolidayCalendarSource {
-            HolidayDayLookup.Resolved(isRestDay = true, fromNetwork = true)
+            HolidayDayLookup.Resolved(isRestDay = true, origin = HolidayDataOrigin.NETWORK)
         }
         val resolver = EffectiveDayTypeResolver(source)
         val r = resolver.resolve(LocalDate.of(2026, 1, 1))
@@ -26,7 +27,7 @@ class EffectiveDayTypeResolverTest {
     @Test
     fun cached_work_day_maps_to_workday_schedule() = runTest {
         val source = HolidayCalendarSource {
-            HolidayDayLookup.Resolved(isRestDay = false, fromNetwork = false)
+            HolidayDayLookup.Resolved(isRestDay = false, origin = HolidayDataOrigin.DISK_CACHE)
         }
         val resolver = EffectiveDayTypeResolver(source)
         val r = resolver.resolve(LocalDate.of(2026, 2, 14))

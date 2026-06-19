@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -25,13 +26,21 @@ class HolidayCalendarRepository(
         val year = date.year
         val mmdd = MM_DD.format(date)
         val load = loadYearHolidayMap(year) ?: return HolidayDayLookup.Unknown
-        val isRest = load.map[mmdd] ?: return HolidayDayLookup.Unknown
-        return HolidayDayLookup.Resolved(isRestDay = isRest, fromNetwork = load.fromNetwork)
+        val isRest = load.map[mmdd] ?: isDefaultRestDay(date)
+        return HolidayDayLookup.Resolved(isRestDay = isRest, origin = load.origin)
+    }
+
+    /** Days omitted from the API are ordinary Mon–Fri work / Sat–Sun rest. */
+    private fun isDefaultRestDay(date: LocalDate): Boolean {
+        return when (date.dayOfWeek) {
+            DayOfWeek.SATURDAY, DayOfWeek.SUNDAY -> true
+            else -> false
+        }
     }
 
     private data class YearHolidayLoad(
         val map: Map<String, Boolean>,
-        val fromNetwork: Boolean,
+        val origin: HolidayDataOrigin,
     )
 
     private suspend fun loadYearHolidayMap(year: Int): YearHolidayLoad? {
@@ -43,7 +52,7 @@ class HolidayCalendarRepository(
 
         if (cacheFresh) {
             val parsed = HolidayJsonParser.parseYearHolidayFlags(cachedJson!!)
-            if (parsed != null) return YearHolidayLoad(parsed, fromNetwork = false)
+            if (parsed != null) return YearHolidayLoad(parsed, HolidayDataOrigin.DISK_CACHE)
         }
 
         val networkJson = withTimeoutOrNull(NETWORK_TIMEOUT_MS) { fetchYearJson(year) }
@@ -54,7 +63,7 @@ class HolidayCalendarRepository(
                     data[stringKey(year)] = networkJson
                     data[longKey(year)] = now
                 }
-                return YearHolidayLoad(parsed, fromNetwork = true)
+                return YearHolidayLoad(parsed, HolidayDataOrigin.NETWORK)
             }
         }
 
@@ -62,7 +71,15 @@ class HolidayCalendarRepository(
             val parsed = HolidayJsonParser.parseYearHolidayFlags(cachedJson)
             if (parsed != null) {
                 AppLog.w("Using stale holiday cache for year $year")
-                return YearHolidayLoad(parsed, fromNetwork = false)
+                return YearHolidayLoad(parsed, HolidayDataOrigin.DISK_CACHE)
+            }
+        }
+
+        loadBundledYearJson(year)?.let { bundledJson ->
+            val parsed = HolidayJsonParser.parseYearHolidayFlags(bundledJson)
+            if (parsed != null) {
+                AppLog.d("Using bundled holiday data for year $year")
+                return YearHolidayLoad(parsed, HolidayDataOrigin.BUNDLED)
             }
         }
 
@@ -70,23 +87,41 @@ class HolidayCalendarRepository(
         return null
     }
 
-    private suspend fun fetchYearJson(year: Int): String? = withContext(Dispatchers.IO) {
-        var connection: HttpURLConnection? = null
+    private suspend fun loadBundledYearJson(year: Int): String? = withContext(Dispatchers.IO) {
         try {
-            val url = URL("https://timor.tech/api/holiday/year/$year")
-            connection = (url.openConnection() as HttpURLConnection).apply {
+            context.assets.open("holiday/$year.json").bufferedReader().use { it.readText() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private suspend fun fetchYearJson(year: Int): String? = withContext(Dispatchers.IO) {
+        fetchFromUrl("https://timor.tech/api/holiday/year/$year", "timor")
+            ?: fetchFromUrl(
+                "https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/$year.json",
+                "jsdelivr",
+            )
+    }
+
+    private fun fetchFromUrl(urlString: String, label: String): String? {
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = (URL(urlString).openConnection() as HttpURLConnection).apply {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 requestMethod = "GET"
+                setRequestProperty("User-Agent", USER_AGENT)
+                setRequestProperty("Accept", "application/json")
             }
             val code = connection.responseCode
             if (code != HttpURLConnection.HTTP_OK) {
-                AppLog.w("Holiday API HTTP $code for year $year")
-                return@withContext null
+                AppLog.w("Holiday API ($label) HTTP $code: $urlString")
+                return null
             }
+            AppLog.d("Holiday API ($label) OK: $urlString")
             connection.inputStream.bufferedReader().use { it.readText() }
         } catch (e: Exception) {
-            AppLog.w("Holiday API request failed for year $year", e)
+            AppLog.w("Holiday API ($label) failed: $urlString", e)
             null
         } finally {
             connection?.disconnect()
@@ -104,5 +139,6 @@ class HolidayCalendarRepository(
         private const val NETWORK_TIMEOUT_MS = 12_000L
         private const val CONNECT_TIMEOUT_MS = 8_000
         private const val READ_TIMEOUT_MS = 8_000
+        private const val USER_AGENT = "SchoolBusWidget/1.0 (Android)"
     }
 }

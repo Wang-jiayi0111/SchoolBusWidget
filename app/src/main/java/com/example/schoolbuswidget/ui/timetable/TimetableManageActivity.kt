@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.graphics.Typeface
 import android.view.View
 import android.view.ViewGroup
+import androidx.annotation.StringRes
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -29,9 +30,8 @@ import com.example.schoolbuswidget.domain.DepartureTime
 import com.example.schoolbuswidget.domain.NorthPeak655PosterParser
 import com.example.schoolbuswidget.domain.SouthPeak655PosterParser
 import com.example.schoolbuswidget.domain.ServiceDayType
-import com.example.schoolbuswidget.BuildConfig
 import com.example.schoolbuswidget.domain.TimetableImportParser
-import com.example.schoolbuswidget.data.rapidocr.TimetableOcrDebugDump
+import com.example.schoolbuswidget.ui.AlignedHourTimesGrid
 import com.example.schoolbuswidget.widget.SchoolBusAppWidgetProvider
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
@@ -67,6 +67,15 @@ class TimetableManageActivity : AppCompatActivity() {
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.setNavigationOnClickListener { finish() }
+        toolbar.inflateMenu(R.menu.menu_timetable_manage)
+        toolbar.setOnMenuItemClickListener { item ->
+            if (item.itemId == R.id.action_reset) {
+                confirmResetToDefault()
+                true
+            } else {
+                false
+            }
+        }
 
         chipNorth = findViewById(R.id.chipNorth)
         chipSouth = findViewById(R.id.chipSouth)
@@ -96,7 +105,6 @@ class TimetableManageActivity : AppCompatActivity() {
 
         findViewById<MaterialButton>(R.id.buttonAddTime).setOnClickListener { showAddTimePicker() }
         findViewById<MaterialButton>(R.id.buttonSave).setOnClickListener { saveCurrent() }
-        findViewById<MaterialButton>(R.id.buttonResetDefault).setOnClickListener { confirmResetToDefault() }
         findViewById<MaterialButton>(R.id.buttonImportText).setOnClickListener { showImportTextDialog() }
         findViewById<MaterialButton>(R.id.buttonImportImage).setOnClickListener {
             pickImage.launch(
@@ -274,22 +282,9 @@ class TimetableManageActivity : AppCompatActivity() {
             }
             val campus = selectedLocation()
             val dayType = selectedDayType()
-            TimetableOcrDebugDump.lastDebugDir = null
-            TimetableOcrDebugDump.logStart(
-                if (campus == CampusLocation.NORTH) "NORTH" else "SOUTH",
-            )
             try {
                 val outcome = withContext(Dispatchers.Default) {
                     ocrBitmapToOutcome(bitmap, campus, dayType)
-                }
-                if (BuildConfig.DEBUG) {
-                    TimetableOcrDebugDump.lastDebugDir?.let { dir ->
-                        Toast.makeText(
-                            this@TimetableManageActivity,
-                            "调试图:\n$dir\n或 下载/SchoolBusOcr/",
-                            Toast.LENGTH_LONG,
-                        ).show()
-                    }
                 }
                 when (outcome) {
                     is OcrImportOutcome.PosterDual ->
@@ -381,19 +376,16 @@ class TimetableManageActivity : AppCompatActivity() {
             PosterParseResult?,
     ): OcrImportOutcome? {
         val cropped = crop(decoded)
-        TimetableOcrDebugDump.savePng(this, cropped, "ocr_cropped.png")
-        val prep = OcrBitmapPreprocessor.preprocessForTimetableOcr(cropped)
+        val prep = OcrBitmapPreprocessor.preprocessForPosterScheduleOcr(cropped)
         if (cropped !== decoded && !cropped.isRecycled) cropped.recycle()
-        TimetableOcrDebugDump.savePng(this, prep, "ocr_prep.png")
         val (scaled, appliedScale) = OcrBitmapPreprocessor.upscaleForScheduleOcr(prep)
         if (scaled !== prep && !prep.isRecycled) prep.recycle()
         try {
-            TimetableOcrDebugDump.savePng(this, scaled, "ocr_scaled.png")
             val lines = RapidOcrRecognizer.recognizeLines(scaled, this)
             val structured = parse(lines, scaled.width, scaled.height, appliedScale) ?: return null
             val wdOk = structured.workday.size >= MIN_STRUCTURED_WORKDAY_DEPARTURES
             val holOk = structured.holiday.size >= MIN_STRUCTURED_HOLIDAY_DEPARTURES
-            if (wdOk && holOk) {
+            if (wdOk || holOk) {
                 return OcrImportOutcome.PosterDual(campus, structured.workday, structured.holiday)
             }
             val column = when (dayType) {
@@ -414,52 +406,136 @@ class TimetableManageActivity : AppCompatActivity() {
         workday: List<LocalTime>,
         holiday: List<LocalTime>,
     ) {
-        val previewScroll = buildImportPreviewScrollView {
-            appendImportPreviewColumn(
-                getString(
-                    R.string.timetable_import_preview_column_header,
-                    getString(R.string.label_day_workday),
-                    workday.size,
-                ),
-                workday,
-            )
-            appendImportPreviewSectionSpacer()
-            appendImportPreviewColumn(
-                getString(
-                    R.string.timetable_import_preview_column_header,
-                    getString(R.string.label_day_holiday),
-                    holiday.size,
-                ),
-                holiday,
-            )
-        }
         val titleRes = when (campus) {
             CampusLocation.NORTH -> R.string.timetable_import_north_dual_title
             CampusLocation.SOUTH -> R.string.timetable_import_south_dual_title
         }
-        val savedBothRes = when (campus) {
-            CampusLocation.NORTH -> R.string.timetable_import_north_dual_saved_both
-            CampusLocation.SOUTH -> R.string.timetable_import_south_dual_saved_both
+        val pad = resources.getDimensionPixelSize(R.dimen.dialog_edit_padding)
+        val btnMargin = (8 * resources.displayMetrics.density).toInt()
+        val maxPreviewHeight = resources.getDimensionPixelSize(R.dimen.dialog_import_preview_max_height)
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
         }
-        val savedOneRes = when (campus) {
-            CampusLocation.NORTH -> R.string.timetable_import_north_dual_saved_one
-            CampusLocation.SOUTH -> R.string.timetable_import_south_dual_saved_one
+
+        val chipGroup = ChipGroup(this).apply {
+            isSingleSelection = true
+            isSelectionRequired = true
+            setPadding(0, 0, 0, btnMargin)
         }
-        AlertDialog.Builder(this)
-            .setTitle(titleRes)
-            .setView(previewScroll)
-            .setPositiveButton(R.string.timetable_import_poster_dual_save_both) { _, _ ->
-                savePosterBothColumns(campus, workday, holiday, savedBothRes)
+        val chipWorkday = Chip(this).apply {
+            id = View.generateViewId()
+            isCheckable = true
+            text = getString(
+                R.string.timetable_import_preview_column_header,
+                getString(R.string.label_day_workday),
+                workday.size,
+            )
+            isEnabled = workday.isNotEmpty()
+            isChecked = workday.isNotEmpty() || holiday.isEmpty()
+        }
+        val chipHoliday = Chip(this).apply {
+            id = View.generateViewId()
+            isCheckable = true
+            text = getString(
+                R.string.timetable_import_preview_column_header,
+                getString(R.string.label_day_holiday),
+                holiday.size,
+            )
+            isEnabled = holiday.isNotEmpty()
+            isChecked = holiday.isNotEmpty() && workday.isEmpty()
+        }
+        chipGroup.addView(chipWorkday)
+        chipGroup.addView(chipHoliday)
+        root.addView(chipGroup)
+
+        val previewHost = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val previewScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                maxPreviewHeight,
+            )
+            addView(previewHost)
+        }
+        root.addView(previewScroll)
+
+        fun fillPreview(times: List<LocalTime>) {
+            previewHost.removeAllViews()
+            ImportPreviewLayout(previewHost).appendImportPreviewTimes(times)
+        }
+
+        lateinit var dialog: AlertDialog
+
+        val saveCurrentBtn = MaterialButton(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = btnMargin
             }
-            .setNeutralButton(R.string.timetable_import_poster_dual_save_one) { _, _ ->
-                val only = when (selectedDayType()) {
-                    ServiceDayType.WORKDAY -> workday
-                    ServiceDayType.HOLIDAY -> holiday
+            setOnClickListener {
+                dialog.dismiss()
+                if (chipWorkday.isChecked) {
+                    savePosterOneColumn(
+                        campus,
+                        ServiceDayType.WORKDAY,
+                        workday,
+                        R.string.timetable_import_poster_saved_workday,
+                    )
+                } else {
+                    savePosterOneColumn(
+                        campus,
+                        ServiceDayType.HOLIDAY,
+                        holiday,
+                        R.string.timetable_import_poster_saved_holiday,
+                    )
                 }
-                savePosterOneColumn(campus, selectedDayType(), only, savedOneRes)
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        }
+        root.addView(saveCurrentBtn)
+
+        fun refreshForSelection(workdaySelected: Boolean) {
+            if (workdaySelected) {
+                fillPreview(workday)
+                saveCurrentBtn.text = getString(R.string.timetable_import_poster_save_workday)
+                saveCurrentBtn.isEnabled = workday.isNotEmpty()
+            } else {
+                fillPreview(holiday)
+                saveCurrentBtn.text = getString(R.string.timetable_import_poster_save_holiday)
+                saveCurrentBtn.isEnabled = holiday.isNotEmpty()
+            }
+        }
+
+        chipGroup.setOnCheckedStateChangeListener { _, checkedIds ->
+            when (checkedIds.firstOrNull()) {
+                chipWorkday.id -> refreshForSelection(workdaySelected = true)
+                chipHoliday.id -> refreshForSelection(workdaySelected = false)
+            }
+        }
+        refreshForSelection(workdaySelected = chipWorkday.isChecked)
+
+        dialog = AlertDialog.Builder(this)
+            .setTitle(titleRes)
+            .setView(root)
+            .setNegativeButton(R.string.timetable_import_poster_dual_save_both) { _, _ ->
+                savePosterBothColumns(
+                    campus,
+                    workday,
+                    holiday,
+                    R.string.timetable_import_poster_saved_both,
+                )
+            }
+            .setPositiveButton(android.R.string.cancel, null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).isEnabled =
+                workday.isNotEmpty() && holiday.isNotEmpty()
+        }
+
+        root.setPadding(pad, pad, pad, pad)
+        dialog.show()
     }
 
     private class ImportPreviewLayout(private val container: LinearLayout) {
@@ -473,6 +549,10 @@ class TimetableManageActivity : AppCompatActivity() {
                     setTypeface(typeface, Typeface.BOLD)
                 },
             )
+            appendImportPreviewTimes(times)
+        }
+
+        fun appendImportPreviewTimes(times: List<LocalTime>) {
             if (times.isEmpty()) {
                 container.addView(
                     TextView(context).apply {
@@ -499,16 +579,15 @@ class TimetableManageActivity : AppCompatActivity() {
                             setPadding(0, blockGapPx(), 0, 0)
                         },
                     )
-                    hourTimes.forEach { time ->
-                        container.addView(
-                            TextView(context).apply {
-                                text = time.toString()
-                                textSize = 14f
-                                setPadding(timeIndentPx(), 0, 0, timeLineGapPx())
-                                setTextIsSelectable(true)
-                            },
-                        )
-                    }
+                    AlignedHourTimesGrid.appendTo(
+                        container,
+                        hourTimes,
+                        AlignedHourTimesGrid.Style(
+                            rowStartPaddingPx = timeIndentPx(),
+                            rowBottomMarginPx = timeLineGapPx(),
+                            textSelectable = true,
+                        ),
+                    )
                 }
         }
 

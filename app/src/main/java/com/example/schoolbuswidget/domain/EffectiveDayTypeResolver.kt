@@ -1,12 +1,14 @@
 package com.example.schoolbuswidget.domain
 
 import com.example.schoolbuswidget.data.holiday.HolidayCalendarSource
+import com.example.schoolbuswidget.data.holiday.HolidayDataOrigin
 import com.example.schoolbuswidget.data.holiday.HolidayDayLookup
 import java.time.LocalDate
 
 enum class DayTypeResolutionSource {
     HOLIDAY_API,
     HOLIDAY_CACHE,
+    HOLIDAY_BUNDLED,
     WEEK_RULE,
     MANUAL_OVERRIDE,
 }
@@ -29,10 +31,10 @@ class EffectiveDayTypeResolver(
                 } else {
                     ServiceDayType.WORKDAY
                 }
-                val source = if (lookup.fromNetwork) {
-                    DayTypeResolutionSource.HOLIDAY_API
-                } else {
-                    DayTypeResolutionSource.HOLIDAY_CACHE
+                val source = when (lookup.origin) {
+                    HolidayDataOrigin.NETWORK -> DayTypeResolutionSource.HOLIDAY_API
+                    HolidayDataOrigin.DISK_CACHE -> DayTypeResolutionSource.HOLIDAY_CACHE
+                    HolidayDataOrigin.BUNDLED -> DayTypeResolutionSource.HOLIDAY_BUNDLED
                 }
                 DayTypeResolution(dayType, source)
             }

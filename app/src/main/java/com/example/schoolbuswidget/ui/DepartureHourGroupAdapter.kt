@@ -3,6 +3,7 @@ package com.example.schoolbuswidget.ui
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.schoolbuswidget.R
@@ -28,13 +29,13 @@ class DepartureHourGroupAdapter : RecyclerView.Adapter<DepartureHourGroupAdapter
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val group = groups[position]
         holder.hourView.text = "%02d".format(group.hour)
-        holder.timesView.text = group.times.joinToString("  ") { it.toString() }
+        AlignedHourTimesGrid.bind(holder.timesGrid, group.times)
     }
 
     override fun getItemCount(): Int = groups.size
 
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val hourView: TextView = view.findViewById(R.id.textHour)
-        val timesView: TextView = view.findViewById(R.id.textTimes)
+        val timesGrid: LinearLayout = view.findViewById(R.id.layoutTimesGrid)
     }
 }

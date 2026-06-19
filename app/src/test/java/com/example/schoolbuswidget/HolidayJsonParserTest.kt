@@ -26,6 +26,15 @@ class HolidayJsonParserTest {
     }
 
     @Test
+    fun parses_holiday_cn_days_array() {
+        val json = """{"days":[{"date":"2026-01-01","isOffDay":true},{"date":"2026-01-04","isOffDay":false}]}"""
+        val map = HolidayJsonParser.parseYearHolidayFlags(json)
+        assertNotNull(map)
+        assertEquals(true, map!!["01-01"])
+        assertEquals(false, map["01-04"])
+    }
+
+    @Test
     fun returns_null_for_invalid_json() {
         assertNull(HolidayJsonParser.parseYearHolidayFlags("not json"))
     }

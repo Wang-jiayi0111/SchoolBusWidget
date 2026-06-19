@@ -54,6 +54,7 @@ object DayTypeLabels {
         return when (source) {
             DayTypeResolutionSource.HOLIDAY_API -> context.getString(R.string.caption_source_holiday_api)
             DayTypeResolutionSource.HOLIDAY_CACHE -> context.getString(R.string.caption_source_holiday_cache)
+            DayTypeResolutionSource.HOLIDAY_BUNDLED -> context.getString(R.string.caption_source_holiday_bundled)
             DayTypeResolutionSource.WEEK_RULE -> context.getString(R.string.caption_source_week_rule)
             DayTypeResolutionSource.MANUAL_OVERRIDE -> context.getString(R.string.caption_source_manual)
         }

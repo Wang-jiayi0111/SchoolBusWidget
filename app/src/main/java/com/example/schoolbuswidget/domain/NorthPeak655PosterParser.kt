@@ -14,8 +14,8 @@ object NorthPeak655PosterParser {
     private val layout = Peak655ScheduleParser.Layout(
         hourRange = 6..22,
         startHourLeftMarker = "06",
-        refImgW = 1536f,
-        refImgH = 1232f,
+        refImgW = 1210f,
+        refImgH = 1108f,
         refHourXMax = 108f,
         refWorkXMin = 120f,
         refMicroY = 14f,

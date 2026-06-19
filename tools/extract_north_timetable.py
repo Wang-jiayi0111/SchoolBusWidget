@@ -151,16 +151,79 @@ def estimate_split_x(ocr_rows: list[dict], img_width: float, fallback: float) ->
 
 def extract_two_digit_minutes_from_string(s: str) -> list[int]:
     s = s.replace("暂无", "")
-    # OCR often joins minutes with '.' instead of spaces (e.g. 00102030.4050).
     digits_only = re.sub(r"\D", "", s)
-    pairs: list[int] = []
-    i = 0
-    while i + 2 <= len(digits_only):
-        val = int(digits_only[i : i + 2])
-        if val <= 59:
-            pairs.append(val)
-        i += 2
-    return pairs
+    if not digits_only:
+        return []
+
+    def pairs(d: str, offset: int) -> list[int]:
+        out: list[int] = []
+        i = offset
+        while i + 2 <= len(d):
+            val = int(d[i : i + 2])
+            if val <= 59:
+                out.append(val)
+            i += 2
+        return out
+
+    from_start = pairs(digits_only, 0)
+    if len(digits_only) % 2 == 1 and len(digits_only) >= 3:
+        from_offset = pairs(digits_only, 1)
+        if len(from_offset) >= len(from_start):
+            return from_offset
+    return from_start
+
+
+def extract_minutes_from_cells(texts: list[str]) -> list[int]:
+    mins: list[int] = []
+    for t in texts:
+        if is_minute_digit_cell(t):
+            mins.extend(extract_two_digit_minutes_from_string(t))
+    return mins
+
+
+def detect_hour_from_band(band: list[dict], hour_x_max: float) -> str | None:
+    left = "".join(b["text"] for b in sorted((b for b in band if b["x"] < hour_x_max), key=lambda z: z["x"]))
+    m = HOUR_TOKEN.search(left.replace("暂无", ""))
+    return m.group(1) if m else None
+
+
+def resolve_hour(detected: str | None, sequential: str, hour_range: range) -> str:
+    if not detected:
+        return sequential
+    try:
+        d = int(detected)
+        s = int(sequential)
+    except ValueError:
+        return sequential
+    if d not in hour_range:
+        return sequential
+    if abs(d - s) <= 1:
+        return detected
+    return sequential
+
+
+def expand_band_around_anchor(
+    filtered: list[dict],
+    band: list[dict],
+    split_x: float,
+    hour_x_max: float,
+    micro_y_tol: float,
+    row_y_tol: float,
+) -> list[dict]:
+    left = [b for b in band if b["x"] < hour_x_max]
+    anchor_y = min((b["y"] for b in left), default=median_y(band))
+    y_min = anchor_y - micro_y_tol * 0.5
+    y_max = anchor_y + row_y_tol
+    seen = {(b["text"], b["x"], b["y"]) for b in band}
+    extras = [
+        b
+        for b in filtered
+        if (b["text"], b["x"], b["y"]) not in seen
+        and b["x"] >= split_x
+        and y_min <= b["y"] <= y_max
+        and not is_schedule_noise_box(b["text"])
+    ]
+    return band + extras
 
 
 def parse_every_three_minutes(parts: list[str]) -> tuple[list[int], bool]:
@@ -269,8 +332,8 @@ def schedule_row_filter(
     out: list[dict] = []
     for r in ocr_rows:
         t = r["text"]
-        # Drop far-right instruction column only (holiday digits sit ~0.82–0.86 of width).
-        if r["x"] > img_w * 0.92:
+        # App OCR may place the last holiday minute near ~0.95× width; 0.92 was too aggressive.
+        if r["x"] > img_w * 0.98:
             continue
         if len(t) > 40 and re.search(r"[A-Za-z]{8}", t):
             continue
@@ -295,6 +358,8 @@ def extract_timetable(
     micro = cluster_rows(filtered, y_tol=micro_y_tol)
     macro = merge_fragments_to_hour_rows(micro, max_inner_gap=merge_gap)
     macro.sort(key=median_y)
+    row_y_tol = max(micro_y_tol * 3.0, img_h * (48.0 / 1108.0))
+    hour_range = range(6, 23)
 
     # Table starts at first row that looks like the 06 row (hour + 暂无 / digits)
     start_idx = 0
@@ -309,40 +374,34 @@ def extract_timetable(
     if len(rows) < 17:
         rows = macro[start_idx:]
 
-    hours_seq = [f"{h:02d}" for h in range(6, 23)]
+    hours_seq = [f"{h:02d}" for h in hour_range]
 
-    workday: dict[str, list[int]] = {}
-    holiday: dict[str, list[int]] = {}
+    workday: dict[str, list[int]] = {h: [] for h in hours_seq}
+    holiday: dict[str, list[int]] = {h: [] for h in hours_seq}
 
     for hi, band in enumerate(rows):
         if hi >= len(hours_seq):
             break
-        hour = hours_seq[hi]
-        wboxes, hboxes = split_work_holiday(band, split_x, hour_x_max, work_x_min)
+        hour = resolve_hour(detect_hour_from_band(band, hour_x_max), hours_seq[hi], hour_range)
+        expanded = expand_band_around_anchor(filtered, band, split_x, hour_x_max, micro_y_tol, row_y_tol)
+        wboxes, hboxes = split_work_holiday(expanded, split_x, hour_x_max, work_x_min)
         wt = [b["text"] for b in sorted(wboxes, key=lambda x: x["x"])]
         ht = [b["text"] for b in sorted(hboxes, key=lambda x: x["x"])]
-
-        w_join = join_minute_digits_only(wt)
-        h_join = join_minute_digits_only(ht)
         w_all = "".join(wt)
         h_all = "".join(ht)
 
         if hour == "06":
-            workday[hour] = [] if "暂无" in w_all else normalize_minutes(extract_two_digit_minutes_from_string(w_join))
-            holiday[hour] = [] if "暂无" in h_all else normalize_minutes(extract_two_digit_minutes_from_string(h_join))
+            workday[hour] = [] if "暂无" in w_all else normalize_minutes(extract_minutes_from_cells(wt))
+            holiday[hour] = [] if "暂无" in h_all else normalize_minutes(extract_minutes_from_cells(ht))
             continue
 
         if hour == "08":
             workday[hour] = normalize_minutes(fix_known_noise(hour, "workday", merge_hour08_workday(wt)))
-            holiday[hour] = normalize_minutes(
-                fix_known_noise(hour, "holiday", extract_two_digit_minutes_from_string(h_join)),
-            )
+            holiday[hour] = normalize_minutes(fix_known_noise(hour, "holiday", extract_minutes_from_cells(ht)))
             continue
 
-        wm = normalize_minutes(fix_known_noise(hour, "workday", extract_two_digit_minutes_from_string(w_join)))
-        hm = normalize_minutes(fix_known_noise(hour, "holiday", extract_two_digit_minutes_from_string(h_join)))
-        workday[hour] = wm
-        holiday[hour] = hm
+        workday[hour] = normalize_minutes(fix_known_noise(hour, "workday", extract_minutes_from_cells(wt)))
+        holiday[hour] = normalize_minutes(fix_known_noise(hour, "holiday", extract_minutes_from_cells(ht)))
 
     return workday, holiday
 
@@ -365,7 +424,7 @@ def main() -> None:
         nargs=4,
         metavar=("L", "T", "R", "B"),
         # Table only: exclude top route strip, bottom map, right instruction column.
-        default=(0.01, 0.27, 0.64, 0.72),
+        default=(0.01, 0.27, 0.64, 0.74),
     )
     parser.add_argument("--split-fraction", type=float, default=None, help="Override split as fraction of image width")
     args = parser.parse_args()

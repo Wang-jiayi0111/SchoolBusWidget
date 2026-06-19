@@ -22,15 +22,13 @@
             android:textColor="?attr/colorPrimary"
             tools:text="08" />
 
-        <TextView
-            android:id="@+id/textTimes"
+        <LinearLayout
+            android:id="@+id/layoutTimesGrid"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:lineSpacingExtra="4dp"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textColor="?attr/colorOnSurface"
-            tools:text="08:00  08:03  08:06  08:30  08:40" />
+            android:orientation="vertical"
+            tools:ignore="RtlSymmetry" />
     </LinearLayout>
 
     <View

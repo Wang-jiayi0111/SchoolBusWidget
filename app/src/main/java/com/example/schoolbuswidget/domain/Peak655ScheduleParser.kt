@@ -45,6 +45,7 @@ internal object Peak655ScheduleParser {
         val workXMin = imgW * (layout.refWorkXMin / layout.refImgW)
         val microYTol = imgH * (layout.refMicroY / layout.refImgH)
         val mergeGap = layout.refMergeGap * max(upscaleApplied, 1f) / 1.5f * (imgH / layout.refImgH)
+        val rowYTol = max(microYTol * 3f, imgH * (48f / layout.refImgH))
 
         val rows = lines.map { Row(it.text, it.centerX, it.centerY, it.score) }
         val splitX = estimateSplitX(rows, imgW, imgW * layout.splitFallbackFraction)
@@ -77,27 +78,30 @@ internal object Peak655ScheduleParser {
 
         for ((hi, band) in tableRows.withIndex()) {
             if (hi >= hoursSeq.size) break
-            val hour = hoursSeq[hi]
-            val (wboxes, hboxes) = splitWorkHoliday(band, splitX, workXMin)
+            val hour = resolveHour(
+                detected = detectHourFromBand(band, hourXMax),
+                sequential = hoursSeq[hi],
+                hourRange = layout.hourRange,
+            )
+            val expanded = expandBandAroundAnchor(filtered, band, splitX, hourXMax, microYTol, rowYTol)
+            val (wboxes, hboxes) = splitWorkHoliday(expanded, splitX, workXMin)
             val wt = wboxes.sortedBy { it.x }.map { it.text }
             val ht = hboxes.sortedBy { it.x }.map { it.text }
-            val wJoinDigits = joinMinuteDigitsOnly(wt)
-            val hJoinDigits = joinMinuteDigitsOnly(ht)
             val wAll = wt.joinToString("")
             val hAll = ht.joinToString("")
 
             when {
                 layout.emptyHour06Rule && hour == "06" -> {
-                    workday[hour] = if (wAll.contains("暂无")) mutableListOf() else normalizeMinutes(extractTwoDigitMinutes(wJoinDigits)).toMutableList()
-                    holiday[hour] = if (hAll.contains("暂无")) mutableListOf() else normalizeMinutes(extractTwoDigitMinutes(hJoinDigits)).toMutableList()
+                    workday[hour] = if (wAll.contains("暂无")) mutableListOf() else normalizeMinutes(extractMinutesFromCells(wt)).toMutableList()
+                    holiday[hour] = if (hAll.contains("暂无")) mutableListOf() else normalizeMinutes(extractMinutesFromCells(ht)).toMutableList()
                 }
                 layout.hour08EveryThreeWorkday && hour == "08" -> {
                     workday[hour] = normalizeMinutes(fixKnownNoise(hour, "workday", mergeHour08Workday(wt))).toMutableList()
-                    holiday[hour] = normalizeMinutes(fixKnownNoise(hour, "holiday", extractTwoDigitMinutes(hJoinDigits))).toMutableList()
+                    holiday[hour] = normalizeMinutes(fixKnownNoise(hour, "holiday", extractMinutesFromCells(ht))).toMutableList()
                 }
                 else -> {
-                    workday[hour] = normalizeMinutes(fixKnownNoise(hour, "workday", extractTwoDigitMinutes(wJoinDigits))).toMutableList()
-                    holiday[hour] = normalizeMinutes(fixKnownNoise(hour, "holiday", extractTwoDigitMinutes(hJoinDigits))).toMutableList()
+                    workday[hour] = normalizeMinutes(fixKnownNoise(hour, "workday", extractMinutesFromCells(wt))).toMutableList()
+                    holiday[hour] = normalizeMinutes(fixKnownNoise(hour, "holiday", extractMinutesFromCells(ht))).toMutableList()
                 }
             }
         }
@@ -124,11 +128,52 @@ internal object Peak655ScheduleParser {
     private fun scheduleRowFilter(rows: List<Row>, imgW: Float, imgH: Float): List<Row> {
         val letterRun = Regex("[A-Za-z]{8}")
         return rows.filter { r ->
-            if (r.x > imgW * 0.92f) return@filter false
+            // App OCR may place the last holiday minute near ~0.95× width; 0.92 was too aggressive.
+            if (r.x > imgW * 0.98f) return@filter false
             if (r.text.length > 40 && letterRun.containsMatchIn(r.text)) return@filter false
             if (r.y < imgH * 0.02f) return@filter false
             true
         }
+    }
+
+    private val hourToken = Regex("(0[6-9]|1[0-9]|2[0-2])")
+
+    private fun detectHourFromBand(band: List<Row>, hourXMax: Float): String? {
+        val left = band.filter { it.x < hourXMax }.sortedBy { it.x }.joinToString("") { it.text }
+        return hourToken.find(left.replace("暂无", ""))?.value
+    }
+
+    private fun resolveHour(detected: String?, sequential: String, hourRange: IntRange): String {
+        if (detected == null) return sequential
+        val d = detected.toIntOrNull() ?: return sequential
+        val s = sequential.toIntOrNull() ?: return sequential
+        if (d !in hourRange) return sequential
+        if (abs(d - s) <= 1) return detected
+        return sequential
+    }
+
+    /** Re-attach holiday minute boxes that drift slightly below the hour marker on the same row. */
+    private fun expandBandAroundAnchor(
+        filtered: List<Row>,
+        band: List<Row>,
+        splitX: Float,
+        hourXMax: Float,
+        microYTol: Float,
+        rowYTol: Float,
+    ): List<Row> {
+        val anchorY = band.filter { it.x < hourXMax }.minByOrNull { it.x }?.y ?: medianY(band)
+        val yMin = anchorY - microYTol * 0.5f
+        val yMax = anchorY + rowYTol
+        val seen = band.map { it.text to it.x to it.y }.toSet()
+        val extras = filtered.filter { r ->
+            val key = r.text to r.x to r.y
+            key !in seen &&
+                r.x >= splitX &&
+                r.y >= yMin &&
+                r.y <= yMax &&
+                !isScheduleNoiseBox(r.text)
+        }
+        return band + extras
     }
 
     private fun clusterRows(items: List<Row>, yTol: Float): List<List<Row>> {
@@ -198,8 +243,18 @@ internal object Peak655ScheduleParser {
     private fun extractTwoDigitMinutes(s: String): List<Int> {
         val cleaned = s.replace("暂无", "")
         val digitsOnly = cleaned.filter { it.isDigit() }
+        if (digitsOnly.isEmpty()) return emptyList()
+        val fromStart = parseTwoDigitPairs(digitsOnly, 0)
+        if (digitsOnly.length % 2 == 1 && digitsOnly.length >= 3) {
+            val fromOffset = parseTwoDigitPairs(digitsOnly, 1)
+            if (fromOffset.size >= fromStart.size) return fromOffset
+        }
+        return fromStart
+    }
+
+    private fun parseTwoDigitPairs(digitsOnly: String, offset: Int): List<Int> {
         val pairs = mutableListOf<Int>()
-        var i = 0
+        var i = offset
         while (i + 2 <= digitsOnly.length) {
             val v = digitsOnly.substring(i, i + 2).toIntOrNull() ?: 0
             if (v <= 59) pairs.add(v)
@@ -207,6 +262,9 @@ internal object Peak655ScheduleParser {
         }
         return pairs
     }
+
+    private fun extractMinutesFromCells(texts: List<String>): List<Int> =
+        texts.filter { isMinuteDigitCell(it) }.flatMap { extractTwoDigitMinutes(it) }
 
     private fun parseEveryThreeMinutes(parts: List<String>): Pair<List<Int>, Boolean> {
         val joined = parts.joinToString("")
@@ -252,9 +310,6 @@ internal object Peak655ScheduleParser {
         if (Regex("每|分钟|意为").containsMatchIn(t)) return false
         return Regex("^[\\d\\s.]+$").matches(t)
     }
-
-    private fun joinMinuteDigitsOnly(texts: List<String>): String =
-        texts.filter { isMinuteDigitCell(it) }.joinToString("")
 
     private fun splitWorkHoliday(
         band: List<Row>,

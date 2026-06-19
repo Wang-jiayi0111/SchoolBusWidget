@@ -17,16 +17,6 @@
         app:navigationIconTint="?attr/colorOnSurface"
         app:title="@string/timetable_manage_title" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="16dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="16dp"
-        android:text="@string/timetable_select_scope"
-        android:textAppearance="?attr/textAppearanceBodySmall"
-        android:textColor="?attr/colorOnSurfaceVariant" />
-
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -139,17 +129,6 @@
             android:textAllCaps="false" />
     </LinearLayout>
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/buttonAddTime"
-        style="@style/Widget.Material3.Button.OutlinedButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
-        android:text="@string/timetable_add_time"
-        android:textAllCaps="false" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -159,21 +138,21 @@
         android:paddingBottom="16dp">
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/buttonSave"
+            android:id="@+id/buttonAddTime"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"
             android:layout_weight="1"
-            android:text="@string/timetable_save"
+            android:text="@string/timetable_add_time"
             android:textAllCaps="false" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/buttonResetDefault"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:id="@+id/buttonSave"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/timetable_reset_default"
+            android:text="@string/timetable_save"
             android:textAllCaps="false" />
     </LinearLayout>
 </LinearLayout>

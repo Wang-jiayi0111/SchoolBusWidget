@@ -17,7 +17,7 @@ object OcrBitmapPreprocessor {
 
     /** Default crop for north-campus 655 timetable poster (same as tools/extract_north_timetable.py). */
     fun cropNorthScheduleRegion(source: Bitmap): Bitmap =
-        cropRelativeRegion(source, l = 0.01f, t = 0.27f, r = 0.64f, b = 0.72f)
+        cropRelativeRegion(source, l = 0.01f, t = 0.27f, r = 0.64f, b = 0.74f)
 
     /** Default crop for south-campus 655 timetable poster (same as tools/extract_south_timetable.py SOUTH_CROP). */
     fun cropSouthScheduleRegion(source: Bitmap): Bitmap =
@@ -51,14 +51,16 @@ object OcrBitmapPreprocessor {
         return Bitmap.createScaledBitmap(source, outW, outH, true) to applied
     }
 
-    fun preprocessForTimetableOcr(source: Bitmap): Bitmap {
+    fun preprocessForPosterScheduleOcr(source: Bitmap): Bitmap =
+        preprocessForTimetableOcr(source, contrast = 1.5f)
+
+    fun preprocessForTimetableOcr(source: Bitmap, contrast: Float = 1.35f): Bitmap {
         if (source.isRecycled) throw IllegalArgumentException("bitmap recycled")
         val w = source.width
         val h = source.height
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         val gray = ColorMatrix().apply { setSaturation(0f) }
-        val contrast = 1.35f
         val shift = -128f * contrast + 128f
         val scale = ColorMatrix(
             floatArrayOf(
