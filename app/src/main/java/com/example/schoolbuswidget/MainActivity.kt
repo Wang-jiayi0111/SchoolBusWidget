@@ -137,6 +137,7 @@ class MainActivity : AppCompatActivity() {
         val nextDepartureText = findViewById<TextView>(R.id.textAppNextDeparture)
         val heroTimeText = findViewById<TextView>(R.id.textNextTimeHero)
         val minutesLeftText = findViewById<TextView>(R.id.textAppMinutesLeft)
+        val followingDepartureText = findViewById<TextView>(R.id.textAppFollowingDeparture)
         val departureListSummary = findViewById<TextView>(R.id.textDepartureListSummary)
         val departureListEmpty = findViewById<TextView>(R.id.textDepartureListEmpty)
         val departureListRecycler = findViewById<RecyclerView>(R.id.recyclerDepartureList)
@@ -150,7 +151,7 @@ class MainActivity : AppCompatActivity() {
                 val effectiveResolver = EffectiveDayTypeResolver(holidayRepository)
                 val dayResolution = resolveServiceDayTypeForMode(dayTypeMode, now.toLocalDate(), effectiveResolver)
                 val departures = repository.getDepartures(selectedLocation, dayResolution.dayType)
-                val nextResult = NextDepartureCalculator().calculate(now, departures)
+                val upcoming = NextDepartureCalculator().calculateUpcoming(now, departures)
 
                 selectionText.text = DayTypeLabels.selectionSummary(
                     this@MainActivity,
@@ -160,15 +161,28 @@ class MainActivity : AppCompatActivity() {
                 )
                 sourceText.text = DayTypeLabels.resolutionSourceCaption(this@MainActivity, dayResolution.source)
 
-                if (nextResult == null) {
+                if (upcoming == null) {
                     heroTimeText.text = getString(R.string.main_time_placeholder)
                     nextDepartureText.visibility = View.VISIBLE
                     nextDepartureText.text = getString(R.string.main_no_departure)
                     minutesLeftText.text = getString(R.string.widget_minutes_unavailable)
+                    followingDepartureText.visibility = View.GONE
                 } else {
+                    val nextResult = upcoming.next
                     heroTimeText.text = nextResult.departureAt.toLocalTime().toString()
                     nextDepartureText.visibility = View.GONE
                     minutesLeftText.text = getString(R.string.main_minutes_left, nextResult.minutesLeft)
+                    val following = upcoming.following
+                    if (following == null) {
+                        followingDepartureText.visibility = View.GONE
+                    } else {
+                        followingDepartureText.visibility = View.VISIBLE
+                        followingDepartureText.text = getString(
+                            R.string.main_following_departure,
+                            following.departureAt.toLocalTime().toString(),
+                            following.minutesLeft,
+                        )
+                    }
                 }
 
                 val times = departures.map { it.time }
@@ -192,6 +206,7 @@ class MainActivity : AppCompatActivity() {
                 nextDepartureText.visibility = View.VISIBLE
                 nextDepartureText.text = getString(R.string.main_error_generic)
                 minutesLeftText.text = ""
+                followingDepartureText.visibility = View.GONE
                 departureListSummary.visibility = View.GONE
                 departureListRecycler.visibility = View.GONE
                 departureListEmpty.visibility = View.VISIBLE

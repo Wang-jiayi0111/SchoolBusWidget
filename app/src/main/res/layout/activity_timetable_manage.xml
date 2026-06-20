@@ -90,6 +90,17 @@
         android:textColor="?attr/colorPrimary"
         tools:text="@string/timetable_source_builtin" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="4dp"
+        android:text="@string/timetable_edit_long_press_hint"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?attr/colorOnSurfaceVariant" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerTimes"
         android:layout_width="match_parent"

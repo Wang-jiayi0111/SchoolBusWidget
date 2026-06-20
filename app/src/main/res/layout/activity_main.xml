@@ -110,6 +110,15 @@
                     android:text="@string/main_minutes_placeholder"
                     android:textAppearance="?attr/textAppearanceTitleMedium"
                     android:textColor="?attr/colorSecondary" />
+
+                <TextView
+                    android:id="@+id/textAppFollowingDeparture"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:visibility="gone" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

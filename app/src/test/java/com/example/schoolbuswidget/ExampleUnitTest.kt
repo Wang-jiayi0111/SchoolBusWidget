@@ -53,6 +53,20 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun calculateUpcoming_returns_next_and_following() {
+        val now = LocalDateTime.of(2026, 4, 28, 8, 15)
+        val departures = listOf("08:00", "08:40", "10:00").map { DepartureTime(LocalTime.parse(it)) }
+
+        val result = calculator.calculateUpcoming(now, departures)
+
+        assertNotNull(result)
+        assertEquals(LocalDateTime.of(2026, 4, 28, 8, 40), result!!.next.departureAt)
+        assertEquals(25, result.next.minutesLeft)
+        assertEquals(LocalDateTime.of(2026, 4, 28, 10, 0), result.following!!.departureAt)
+        assertEquals(105, result.following!!.minutesLeft)
+    }
+
+    @Test
     fun default_timetable_has_data_for_each_location_and_day_type() {
         val northWorkday = DefaultTimetable.table[CampusLocation.NORTH to ServiceDayType.WORKDAY]
         val northHoliday = DefaultTimetable.table[CampusLocation.NORTH to ServiceDayType.HOLIDAY]
@@ -63,6 +77,9 @@ class ExampleUnitTest {
         assertTrue(!northHoliday.isNullOrEmpty())
         assertTrue(!southWorkday.isNullOrEmpty())
         assertTrue(!southHoliday.isNullOrEmpty())
+        assertEquals(90, northWorkday!!.size)
+        assertEquals(LocalTime.of(7, 0), northWorkday.first().time)
+        assertEquals(LocalTime.of(21, 50), northWorkday.last().time)
     }
 
     @Test

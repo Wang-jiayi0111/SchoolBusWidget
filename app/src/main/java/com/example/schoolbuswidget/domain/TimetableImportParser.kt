@@ -26,6 +26,30 @@ object TimetableImportParser {
         return out.sorted()
     }
 
+    /** Parse times for a fixed hour: full times (e.g. 8:15) and minute-only tokens (e.g. 00 30 45). */
+    fun extractTimesForHour(hour: Int, raw: String): List<LocalTime> {
+        require(hour in 0..23)
+        val out = linkedSetOf<LocalTime>()
+        extractTimesFromText(raw).filter { it.hour == hour }.forEach { out.add(it) }
+
+        val normalized = normalizeForOcrText(raw)
+        normalized.split(Regex("[\\s,，、;；]+"))
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .filter { token ->
+                !token.contains(':') && !token.contains('：') &&
+                    !token.contains('.') && !token.contains('．')
+            }
+            .forEach { token ->
+                val minute = ocrDigitsToInt(token) ?: return@forEach
+                if (minute in 0..59) {
+                    out.add(LocalTime.of(hour, minute))
+                }
+            }
+        return out.sorted()
+    }
+
     private fun collectFromPattern(
         pattern: Pattern,
         text: String,

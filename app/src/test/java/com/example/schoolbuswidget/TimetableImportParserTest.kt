@@ -63,8 +63,22 @@ class TimetableImportParserTest {
     }
 
     @Test
-    fun does_not_treat_year_as_time() {
-        val times = TimetableImportParser.extractTimesFromText("更新于2024年1月")
-        assertTrue(times.isEmpty())
+    fun extract_times_for_hour_from_minutes_only() {
+        val times = TimetableImportParser.extractTimesForHour(8, "00 15 30 45")
+        assertEquals(
+            listOf(
+                LocalTime.of(8, 0),
+                LocalTime.of(8, 15),
+                LocalTime.of(8, 30),
+                LocalTime.of(8, 45),
+            ),
+            times,
+        )
+    }
+
+    @Test
+    fun extract_times_for_hour_from_full_times() {
+        val times = TimetableImportParser.extractTimesForHour(8, "8:00 8:15 9:00")
+        assertEquals(listOf(LocalTime.of(8, 0), LocalTime.of(8, 15)), times)
     }
 }

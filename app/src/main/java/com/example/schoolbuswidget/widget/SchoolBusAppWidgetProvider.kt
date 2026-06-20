@@ -124,11 +124,11 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
 
                 val repository = TimetableDataStoreRepository(context)
                 val departures = repository.getDepartures(selectedLocation, dayResolution.dayType)
-                val result = NextDepartureCalculator().calculate(now, departures)
+                val upcoming = NextDepartureCalculator().calculateUpcoming(now, departures)
 
                 views.setTextViewText(
                     R.id.textSelection,
-                    DayTypeLabels.selectionSummary(
+                    DayTypeLabels.compactSelection(
                         context,
                         northSelected,
                         mode,
@@ -136,10 +136,12 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
                     ),
                 )
 
-                if (result == null) {
+                if (upcoming == null) {
                     views.setTextViewText(R.id.textNextDeparture, context.getString(R.string.main_time_placeholder))
                     views.setTextViewText(R.id.textMinutesLeft, context.getString(R.string.widget_no_departure))
+                    views.setViewVisibility(R.id.textFollowingDeparture, android.view.View.GONE)
                 } else {
+                    val result = upcoming.next
                     views.setTextViewText(
                         R.id.textNextDeparture,
                         result.departureAt.toLocalTime().toString(),
@@ -148,11 +150,25 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
                         R.id.textMinutesLeft,
                         context.getString(R.string.widget_minutes_left, result.minutesLeft),
                     )
+                    val following = upcoming.following
+                    if (following == null) {
+                        views.setViewVisibility(R.id.textFollowingDeparture, android.view.View.GONE)
+                    } else {
+                        views.setViewVisibility(R.id.textFollowingDeparture, android.view.View.VISIBLE)
+                        views.setTextViewText(
+                            R.id.textFollowingDeparture,
+                            context.getString(
+                                R.string.widget_following_departure,
+                                following.departureAt.toLocalTime().toString(),
+                            ),
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 AppLog.e("Widget update failed for id=$appWidgetId", e)
                 views.setTextViewText(R.id.textNextDeparture, context.getString(R.string.widget_error_generic))
                 views.setTextViewText(R.id.textMinutesLeft, "")
+                views.setViewVisibility(R.id.textFollowingDeparture, android.view.View.GONE)
             }
         }
 

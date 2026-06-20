@@ -32,6 +32,24 @@ object DayTypeLabels {
         }
     }
 
+    fun compactSelection(
+        context: Context,
+        northSelected: Boolean,
+        mode: Int,
+        resolvedDayType: ServiceDayType,
+    ): String {
+        val loc = location(context, northSelected)
+        val second = if (mode == WidgetPreferenceRepository.DAY_TYPE_MODE_AUTO) {
+            context.getString(
+                R.string.label_auto_with_resolved,
+                serviceDayType(context, resolvedDayType),
+            )
+        } else {
+            modeName(context, mode)
+        }
+        return context.getString(R.string.widget_header_selection, loc, second)
+    }
+
     fun selectionSummary(
         context: Context,
         northSelected: Boolean,

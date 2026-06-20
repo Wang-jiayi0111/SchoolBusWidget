@@ -13,6 +13,7 @@ import java.time.LocalTime
 class TimetableGroupedTimeAdapter(
     private val times: MutableList<LocalTime>,
     private val onDelete: (Int) -> Unit,
+    private val onHourLongPress: (Int) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val items = mutableListOf<ListItem>()
@@ -38,6 +39,10 @@ class TimetableGroupedTimeAdapter(
                 }
             }
         notifyDataSetChanged()
+    }
+
+    fun ensureHourExpanded(hour: Int) {
+        expandedHours.add(hour)
     }
 
     private fun toggleHour(hour: Int) {
@@ -83,6 +88,10 @@ class TimetableGroupedTimeAdapter(
                     item.hour,
                 )
                 h.itemView.setOnClickListener { toggleHour(item.hour) }
+                h.itemView.setOnLongClickListener {
+                    onHourLongPress(item.hour)
+                    true
+                }
             }
             is ListItem.TimeRow -> {
                 val h = holder as TimeHolder

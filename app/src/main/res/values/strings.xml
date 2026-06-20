@@ -14,6 +14,7 @@
     <string name="main_next_departure">下一班：%1$s</string>
     <string name="main_minutes_placeholder">剩余：-- 分钟</string>
     <string name="main_minutes_left">剩余：%1$d 分钟</string>
+    <string name="main_following_departure">下下班：%1$s（剩余 %2$d 分钟）</string>
     <string name="main_departure_list_title">发车时刻表</string>
     <string name="main_departure_list_summary">共 %1$d 班 · 按小时分组</string>
     <string name="main_departure_list_placeholder">暂无班次</string>
@@ -30,6 +31,8 @@
     <string name="widget_next_departure">下一班：%1$s</string>
     <string name="widget_minutes_placeholder">剩余：-- 分钟</string>
     <string name="widget_minutes_left">剩余：%1$d 分钟</string>
+    <string name="widget_following_departure">下下班：%1$s</string>
+    <string name="widget_header_selection">%1$s · %2$s</string>
     <string name="widget_minutes_unavailable">剩余：不可用</string>
     <string name="widget_no_departure">今日无后续班次</string>
     <string name="widget_refresh">刷新</string>
@@ -53,7 +56,16 @@
     <string name="timetable_manage_title">编辑时刻表</string>
     <string name="timetable_source_builtin">当前数据：内置默认</string>
     <string name="timetable_source_custom">当前数据：已保存的自定义</string>
+    <string name="timetable_edit_long_press_hint">长按可添加或删除对应小时的多个班次</string>
     <string name="timetable_add_time">添加发车时间</string>
+    <string name="timetable_hour_actions_title">%1$02d 时 · 选择操作</string>
+    <string name="timetable_hour_batch_add">添加多个班次</string>
+    <string name="timetable_hour_batch_add_hint">输入分钟或时间，空格分隔。如 00 15 30 或 8:00 8:15</string>
+    <string name="timetable_hour_batch_add_added">已添加 %1$d 个时间</string>
+    <string name="timetable_hour_batch_add_empty">未识别到有效时间</string>
+    <string name="timetable_hour_delete_all">删除该小时 %1$d 班次</string>
+    <string name="timetable_hour_delete_confirm">删除 %1$02d 时的全部 %2$d 个班次？</string>
+    <string name="timetable_hour_deleted">已删除该小时班次</string>
     <string name="timetable_delete_time">删除</string>
     <string name="timetable_save">保存</string>
     <string name="timetable_reset_default">重置</string>
@@ -91,5 +103,6 @@
     <string name="timetable_import_replace">替换列表</string>
     <string name="timetable_import_merge">合并去重</string>
     <string name="timetable_image_load_fail">无法读取图片</string>
+    <string name="timetable_image_ocr_loading">正在识别图片…</string>
     <string name="timetable_image_ocr_fail">图片识别失败：%1$s</string>
 </resources>

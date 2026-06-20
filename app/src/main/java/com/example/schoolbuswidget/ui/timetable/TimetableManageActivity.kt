@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.graphics.Typeface
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.StringRes
@@ -37,6 +38,7 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +56,7 @@ class TimetableManageActivity : AppCompatActivity() {
     private lateinit var chipWorkday: Chip
     private lateinit var chipHoliday: Chip
     private lateinit var textCustomSource: TextView
+    private var imageOcrLoadingDialog: AlertDialog? = null
 
     private val pickImage = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -86,12 +89,16 @@ class TimetableManageActivity : AppCompatActivity() {
         val chipGroupCampus = findViewById<ChipGroup>(R.id.chipGroupCampus)
         val chipGroupDayType = findViewById<ChipGroup>(R.id.chipGroupDayType)
 
-        adapter = TimetableGroupedTimeAdapter(times) { index ->
-            if (index in times.indices) {
-                times.removeAt(index)
-                adapter.rebuildItems()
-            }
-        }
+        adapter = TimetableGroupedTimeAdapter(
+            times,
+            onDelete = { index ->
+                if (index in times.indices) {
+                    times.removeAt(index)
+                    adapter.rebuildItems()
+                }
+            },
+            onHourLongPress = { hour -> showHourActionsDialog(hour) },
+        )
         val recycler = findViewById<RecyclerView>(R.id.recyclerTimes)
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
@@ -153,6 +160,115 @@ class TimetableManageActivity : AppCompatActivity() {
             }
         }
         picker.show(supportFragmentManager, "add_time")
+    }
+
+    private fun showHourActionsDialog(hour: Int) {
+        val count = times.count { it.hour == hour }
+        val pad = resources.getDimensionPixelSize(R.dimen.dialog_edit_padding)
+        val btnMargin = (8 * resources.displayMetrics.density).toInt()
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, pad / 2)
+        }
+
+        lateinit var dialog: AlertDialog
+        val addButton = MaterialButton(
+            this,
+            null,
+            com.google.android.material.R.attr.materialButtonOutlinedStyle,
+        ).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            text = getString(R.string.timetable_hour_batch_add)
+            setOnClickListener {
+                dialog.dismiss()
+                showBatchAddHourDialog(hour)
+            }
+        }
+        root.addView(addButton)
+
+        if (count > 0) {
+            root.addView(
+                MaterialButton(
+                    this,
+                    null,
+                    com.google.android.material.R.attr.materialButtonOutlinedStyle,
+                ).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply {
+                        topMargin = btnMargin
+                    }
+                    text = getString(R.string.timetable_hour_delete_all, count)
+                    setOnClickListener {
+                        dialog.dismiss()
+                        confirmDeleteHour(hour)
+                    }
+                },
+            )
+        }
+
+        dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.timetable_hour_actions_title, hour))
+            .setView(root)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        dialog.show()
+    }
+
+    private fun showBatchAddHourDialog(hour: Int) {
+        val input = EditText(this).apply {
+            setHint(R.string.timetable_hour_batch_add_hint)
+            minLines = 2
+            setHorizontallyScrolling(false)
+        }
+        val padding = resources.getDimensionPixelSize(R.dimen.dialog_edit_padding)
+        input.setPadding(padding, padding, padding, padding)
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.timetable_hour_actions_title, hour))
+            .setView(input)
+            .setPositiveButton(R.string.timetable_import_parse) { _, _ ->
+                val parsed = TimetableImportParser.extractTimesForHour(hour, input.text.toString())
+                if (parsed.isEmpty()) {
+                    Toast.makeText(this, R.string.timetable_hour_batch_add_empty, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                var added = 0
+                parsed.forEach { time ->
+                    if (time !in times) {
+                        times.add(time)
+                        added++
+                    }
+                }
+                times.sort()
+                adapter.ensureHourExpanded(hour)
+                adapter.rebuildItems()
+                Toast.makeText(
+                    this,
+                    getString(R.string.timetable_hour_batch_add_added, added),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmDeleteHour(hour: Int) {
+        val count = times.count { it.hour == hour }
+        if (count == 0) return
+        AlertDialog.Builder(this)
+            .setMessage(getString(R.string.timetable_hour_delete_confirm, hour, count))
+            .setPositiveButton(R.string.timetable_delete_time) { _, _ ->
+                times.removeAll { it.hour == hour }
+                adapter.rebuildItems()
+                Toast.makeText(this, R.string.timetable_hour_deleted, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun saveCurrent() {
@@ -275,14 +391,16 @@ class TimetableManageActivity : AppCompatActivity() {
 
     private fun onImagePicked(uri: Uri) {
         lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { decodeBitmapMaxSide(uri, 2048) }
-            if (bitmap == null) {
-                Toast.makeText(this@TimetableManageActivity, R.string.timetable_image_load_fail, Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            val campus = selectedLocation()
-            val dayType = selectedDayType()
+            showImageOcrLoading()
+            var bitmap: Bitmap? = null
             try {
+                bitmap = withContext(Dispatchers.IO) { decodeBitmapMaxSide(uri, 2048) }
+                if (bitmap == null) {
+                    Toast.makeText(this@TimetableManageActivity, R.string.timetable_image_load_fail, Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                val campus = selectedLocation()
+                val dayType = selectedDayType()
                 val outcome = withContext(Dispatchers.Default) {
                     ocrBitmapToOutcome(bitmap, campus, dayType)
                 }
@@ -299,9 +417,49 @@ class TimetableManageActivity : AppCompatActivity() {
                     Toast.LENGTH_LONG,
                 ).show()
             } finally {
-                if (!bitmap.isRecycled) bitmap.recycle()
+                hideImageOcrLoading()
+                bitmap?.let { if (!it.isRecycled) it.recycle() }
             }
         }
+    }
+
+    private fun showImageOcrLoading() {
+        hideImageOcrLoading()
+        val pad = resources.getDimensionPixelSize(R.dimen.dialog_edit_padding)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        root.addView(
+            CircularProgressIndicator(this).apply {
+                isIndeterminate = true
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { marginEnd = pad }
+            },
+        )
+        root.addView(
+            TextView(this).apply {
+                text = getString(R.string.timetable_image_ocr_loading)
+            },
+        )
+        imageOcrLoadingDialog = AlertDialog.Builder(this)
+            .setView(root)
+            .setCancelable(false)
+            .create()
+        imageOcrLoadingDialog?.show()
+    }
+
+    private fun hideImageOcrLoading() {
+        imageOcrLoadingDialog?.dismiss()
+        imageOcrLoadingDialog = null
+    }
+
+    override fun onDestroy() {
+        hideImageOcrLoading()
+        super.onDestroy()
     }
 
     private sealed class OcrImportOutcome {
