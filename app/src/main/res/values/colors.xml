@@ -10,6 +10,38 @@
     <color name="surface_variant_light">#FFE7DB</color>
     <color name="on_surface_variant_light">#5C4033</color>
 
+    <!-- Theme palettes -->
+    <color name="palette_orange_primary">#E65100</color>
+    <color name="palette_orange_container">#FFE7DB</color>
+    <color name="palette_orange_surface">#FFF8F5</color>
+    <color name="palette_orange_card">#FFFFF3EB</color>
+    <color name="palette_orange_outline">#1FE65100</color>
+    <color name="palette_orange_popup">#FFFFFCFA</color>
+    <color name="palette_blue_primary">#1976D2</color>
+    <color name="palette_blue_container">#BBDEFB</color>
+    <color name="palette_blue_surface">#F5F9FF</color>
+    <color name="palette_blue_card">#FFEDF4FC</color>
+    <color name="palette_blue_outline">#1F1976D2</color>
+    <color name="palette_blue_popup">#FFFBFDFF</color>
+    <color name="palette_green_primary">#388E3C</color>
+    <color name="palette_green_container">#C8E6C9</color>
+    <color name="palette_green_surface">#F5FBF5</color>
+    <color name="palette_green_card">#FFEDF6ED</color>
+    <color name="palette_green_outline">#1F388E3C</color>
+    <color name="palette_green_popup">#FFFBFDFB</color>
+    <color name="palette_purple_primary">#7B1FA2</color>
+    <color name="palette_purple_container">#E1BEE7</color>
+    <color name="palette_purple_surface">#FAF5FD</color>
+    <color name="palette_purple_card">#FFF5EDFA</color>
+    <color name="palette_purple_outline">#1F7B1FA2</color>
+    <color name="palette_purple_popup">#FFFDFBFE</color>
+    <color name="palette_teal_primary">#00695C</color>
+    <color name="palette_teal_container">#B2DFDB</color>
+    <color name="palette_teal_surface">#F2FAF9</color>
+    <color name="palette_teal_card">#FFEBF5F3</color>
+    <color name="palette_teal_outline">#1F00695C</color>
+    <color name="palette_teal_popup">#FFFAFDFC</color>
+
     <!-- Widget panel (always dark for contrast on home screen) -->
     <color name="widget_bg">#FF1B2631</color>
     <color name="widget_bg_elevated">#FF243342</color>
@@ -17,4 +49,13 @@
     <color name="widget_on_surface_muted">#FFB0BEC5</color>
     <color name="widget_accent">#FFFFB74D</color>
     <color name="widget_divider">#33FFFFFF</color>
+
+    <!-- Schedule dialog choice chips -->
+    <color name="chip_choice_selected_bg">#FFE65100</color>
+    <color name="chip_choice_selected_bg_soft">#FFE7DB</color>
+    <color name="chip_choice_unselected_bg">#FFF0F0F0</color>
+    <color name="chip_choice_selected_text">#FFFFFFFF</color>
+    <color name="chip_choice_selected_text_soft">#FFE65100</color>
+    <color name="chip_choice_unselected_text">#FF757575</color>
+    <color name="chip_choice_unselected_stroke">#FFE0E0E0</color>
 </resources>

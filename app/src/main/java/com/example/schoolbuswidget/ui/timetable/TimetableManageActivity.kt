@@ -1,5 +1,6 @@
 package com.example.schoolbuswidget.ui.timetable
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -18,26 +19,32 @@ import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.example.schoolbuswidget.ui.ThemedActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.schoolbuswidget.R
+import com.example.schoolbuswidget.data.ScheduleRepository
+import com.example.schoolbuswidget.data.ScenarioRepository
 import com.example.schoolbuswidget.data.TimetableDataStoreRepository
 import com.example.schoolbuswidget.data.rapidocr.OcrBitmapPreprocessor
 import com.example.schoolbuswidget.data.rapidocr.RapidOcrRecognizer
 import com.example.schoolbuswidget.domain.CampusLocation
 import com.example.schoolbuswidget.domain.DepartureTime
 import com.example.schoolbuswidget.domain.NorthPeak655PosterParser
+import com.example.schoolbuswidget.domain.Scenario
+import com.example.schoolbuswidget.domain.ScenarioTemplate
 import com.example.schoolbuswidget.domain.SouthPeak655PosterParser
 import com.example.schoolbuswidget.domain.ServiceDayType
 import com.example.schoolbuswidget.domain.TimetableImportParser
+import com.example.schoolbuswidget.domain.TimetableSchedule
 import com.example.schoolbuswidget.ui.AlignedHourTimesGrid
+import com.example.schoolbuswidget.ui.ScheduleChoiceButtons
+import com.example.schoolbuswidget.ui.ScheduleLabels
+import com.example.schoolbuswidget.ui.schedule.ScheduleListActivity
 import com.example.schoolbuswidget.widget.SchoolBusAppWidgetProvider
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.chip.Chip
-import com.google.android.material.chip.ChipGroup
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
@@ -45,16 +52,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
-class TimetableManageActivity : AppCompatActivity() {
+class TimetableManageActivity : ThemedActivity() {
 
+    private lateinit var scenario: Scenario
+    private var scheduleId: String? = null
+    private var schedule: TimetableSchedule? = null
     private val times = mutableListOf<LocalTime>()
     private lateinit var adapter: TimetableGroupedTimeAdapter
     private val repository by lazy { TimetableDataStoreRepository(this) }
+    private val scheduleRepository by lazy { ScheduleRepository(this) }
 
-    private lateinit var chipNorth: Chip
-    private lateinit var chipSouth: Chip
-    private lateinit var chipWorkday: Chip
-    private lateinit var chipHoliday: Chip
+    private lateinit var buttonCampusNorth: MaterialButton
+    private lateinit var buttonCampusSouth: MaterialButton
+    private lateinit var buttonDayWorkday: MaterialButton
+    private lateinit var buttonDayHoliday: MaterialButton
+    private lateinit var layoutCampusChoices: View
+    private lateinit var layoutDayTypeChoices: View
     private lateinit var textCustomSource: TextView
     private var imageOcrLoadingDialog: AlertDialog? = null
 
@@ -66,9 +79,41 @@ class TimetableManageActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val scenarioId = intent.getStringExtra(EXTRA_SCENARIO_ID)
+        if (scenarioId.isNullOrBlank()) {
+            finish()
+            return
+        }
+        val loaded = kotlinx.coroutines.runBlocking {
+            ScenarioRepository(this@TimetableManageActivity).getScenario(scenarioId)
+        }
+        if (loaded == null) {
+            finish()
+            return
+        }
+        scenario = loaded
+        scheduleId = intent.getStringExtra(EXTRA_SCHEDULE_ID)
+        if (scenario.template == ScenarioTemplate.MULTI_SCHEDULE && scheduleId.isNullOrBlank()) {
+            startActivity(ScheduleListActivity.intent(this, scenario.id))
+            finish()
+            return
+        }
+        if (!scheduleId.isNullOrBlank()) {
+            val loadedSchedule = kotlinx.coroutines.runBlocking {
+                scheduleRepository.getSchedule(scenario.id, scheduleId!!)
+            }
+            if (loadedSchedule == null) {
+                finish()
+                return
+            }
+            schedule = loadedSchedule
+        }
         setContentView(R.layout.activity_timetable_manage)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        toolbar.title = schedule?.name?.let {
+            getString(R.string.timetable_manage_title_for, it)
+        } ?: getString(R.string.timetable_manage_title_for, scenario.name)
         toolbar.setNavigationOnClickListener { finish() }
         toolbar.inflateMenu(R.menu.menu_timetable_manage)
         toolbar.setOnMenuItemClickListener { item ->
@@ -80,14 +125,35 @@ class TimetableManageActivity : AppCompatActivity() {
             }
         }
 
-        chipNorth = findViewById(R.id.chipNorth)
-        chipSouth = findViewById(R.id.chipSouth)
-        chipWorkday = findViewById(R.id.chipWorkday)
-        chipHoliday = findViewById(R.id.chipHoliday)
+        layoutCampusChoices = findViewById(R.id.layoutCampusChoices)
+        layoutDayTypeChoices = findViewById(R.id.layoutDayTypeChoices)
         textCustomSource = findViewById(R.id.textCustomSource)
 
-        val chipGroupCampus = findViewById<ChipGroup>(R.id.chipGroupCampus)
-        val chipGroupDayType = findViewById<ChipGroup>(R.id.chipGroupDayType)
+        buttonCampusNorth = ScheduleChoiceButtons.createButton(
+            this,
+            getString(R.string.label_campus_north),
+            checked = true,
+        )
+        buttonCampusSouth = ScheduleChoiceButtons.createButton(
+            this,
+            getString(R.string.label_campus_south),
+        )
+        buttonDayWorkday = ScheduleChoiceButtons.createButton(
+            this,
+            getString(R.string.label_day_workday),
+            checked = true,
+        )
+        buttonDayHoliday = ScheduleChoiceButtons.createButton(
+            this,
+            getString(R.string.label_day_holiday),
+        )
+        findViewById<LinearLayout>(R.id.containerCampusChoices).addView(
+            ScheduleChoiceButtons.createEqualWidthRow(this, buttonCampusNorth, buttonCampusSouth),
+        )
+        findViewById<LinearLayout>(R.id.containerDayTypeChoices).addView(
+            ScheduleChoiceButtons.createEqualWidthRow(this, buttonDayWorkday, buttonDayHoliday),
+        )
+        applyScenarioUi()
 
         adapter = TimetableGroupedTimeAdapter(
             times,
@@ -103,11 +169,11 @@ class TimetableManageActivity : AppCompatActivity() {
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
 
-        chipGroupCampus.setOnCheckedStateChangeListener { _, checkedIds ->
-            if (checkedIds.isNotEmpty()) loadTimetableForSelection()
+        ScheduleChoiceButtons.wireExclusive(buttonCampusNorth, buttonCampusSouth) {
+            loadTimetableForSelection()
         }
-        chipGroupDayType.setOnCheckedStateChangeListener { _, checkedIds ->
-            if (checkedIds.isNotEmpty()) loadTimetableForSelection()
+        ScheduleChoiceButtons.wireExclusive(buttonDayWorkday, buttonDayHoliday) {
+            loadTimetableForSelection()
         }
 
         findViewById<MaterialButton>(R.id.buttonAddTime).setOnClickListener { showAddTimePicker() }
@@ -122,25 +188,74 @@ class TimetableManageActivity : AppCompatActivity() {
         loadTimetableForSelection()
     }
 
+    private fun applyScenarioUi() {
+        if (scheduleId != null) {
+            layoutCampusChoices.visibility = View.GONE
+            layoutDayTypeChoices.visibility = View.GONE
+            schedule?.let {
+                textCustomSource.text = ScheduleLabels.ruleSummary(this, it)
+            }
+            return
+        }
+        when (scenario.template) {
+            ScenarioTemplate.SIMPLE -> {
+                layoutCampusChoices.visibility = View.GONE
+                layoutDayTypeChoices.visibility = View.GONE
+            }
+            ScenarioTemplate.MULTI_SCHEDULE -> {
+                layoutCampusChoices.visibility = View.GONE
+                layoutDayTypeChoices.visibility = View.GONE
+            }
+            ScenarioTemplate.MULTI_PROFILE -> {
+                layoutCampusChoices.visibility = View.VISIBLE
+                layoutDayTypeChoices.visibility = View.VISIBLE
+            }
+        }
+    }
+
     private fun selectedLocation(): CampusLocation {
-        return if (chipNorth.isChecked) CampusLocation.NORTH else CampusLocation.SOUTH
+        return if (buttonCampusNorth.isChecked) CampusLocation.NORTH else CampusLocation.SOUTH
     }
 
     private fun selectedDayType(): ServiceDayType {
-        return if (chipWorkday.isChecked) ServiceDayType.WORKDAY else ServiceDayType.HOLIDAY
+        return if (buttonDayWorkday.isChecked) ServiceDayType.WORKDAY else ServiceDayType.HOLIDAY
     }
 
     private fun loadTimetableForSelection() {
         lifecycleScope.launch {
-            val list = repository.getDepartures(selectedLocation(), selectedDayType())
-                .map { it.time }
+            val list = if (scheduleId != null) {
+                scheduleRepository.getScheduleTimes(scheduleId!!).map { it.time }
+            } else {
+                repository.getScenarioDepartures(
+                    scenario = scenario,
+                    location = selectedLocation(),
+                    dayType = selectedDayType(),
+                ).map { it.time }
+            }
             times.clear()
             times.addAll(list)
             adapter.rebuildItems()
-            val custom = repository.hasCustomDepartures(selectedLocation(), selectedDayType())
-            textCustomSource.text = getString(
-                if (custom) R.string.timetable_source_custom else R.string.timetable_source_builtin,
-            )
+            if (scheduleId != null) {
+                val custom = scheduleRepository.hasCustomScheduleTimes(scheduleId!!)
+                textCustomSource.text = buildString {
+                    schedule?.let { append(ScheduleLabels.ruleSummary(this@TimetableManageActivity, it)) }
+                    append(" · ")
+                    append(
+                        getString(
+                            if (custom) R.string.timetable_source_custom else R.string.timetable_source_builtin,
+                        ),
+                    )
+                }
+            } else {
+                val custom = repository.hasCustomScenarioDepartures(
+                    scenario = scenario,
+                    location = selectedLocation(),
+                    dayType = selectedDayType(),
+                )
+                textCustomSource.text = getString(
+                    if (custom) R.string.timetable_source_custom else R.string.timetable_source_builtin,
+                )
+            }
         }
     }
 
@@ -274,7 +389,16 @@ class TimetableManageActivity : AppCompatActivity() {
     private fun saveCurrent() {
         lifecycleScope.launch {
             val deps = times.distinct().sorted().map { DepartureTime(it) }
-            repository.saveDepartures(selectedLocation(), selectedDayType(), deps)
+            if (scheduleId != null) {
+                scheduleRepository.saveScheduleTimes(scheduleId!!, deps)
+            } else {
+                repository.saveScenarioDepartures(
+                    scenario = scenario,
+                    departures = deps,
+                    location = selectedLocation(),
+                    dayType = selectedDayType(),
+                )
+            }
             textCustomSource.text = getString(R.string.timetable_source_custom)
             Toast.makeText(this@TimetableManageActivity, R.string.timetable_saved, Toast.LENGTH_SHORT).show()
             refreshHomeWidgets()
@@ -287,7 +411,15 @@ class TimetableManageActivity : AppCompatActivity() {
             .setMessage(R.string.timetable_reset_confirm)
             .setPositiveButton(R.string.timetable_reset_confirm_yes) { _, _ ->
                 lifecycleScope.launch {
-                    repository.clearSavedDepartures(selectedLocation(), selectedDayType())
+                    if (scheduleId != null) {
+                        scheduleRepository.clearScheduleTimes(scheduleId!!)
+                    } else {
+                        repository.clearScenarioSavedDepartures(
+                            scenario = scenario,
+                            location = selectedLocation(),
+                            dayType = selectedDayType(),
+                        )
+                    }
                     loadTimetableForSelection()
                     Toast.makeText(
                         this@TimetableManageActivity,
@@ -302,10 +434,15 @@ class TimetableManageActivity : AppCompatActivity() {
     }
 
     private fun showImportTextDialog() {
-        if (selectedLocation() == CampusLocation.NORTH) {
-            showNorthImportTextDualDialog()
-            return
+        when {
+            scheduleId != null -> showSingleColumnImportTextDialog()
+            scenario.template == ScenarioTemplate.MULTI_PROFILE && selectedLocation() == CampusLocation.NORTH ->
+                showNorthImportTextDualDialog()
+            else -> showSingleColumnImportTextDialog()
         }
+    }
+
+    private fun showSingleColumnImportTextDialog() {
         val input = EditText(this).apply {
             setHint(R.string.timetable_import_text_hint)
             minLines = 5
@@ -363,17 +500,19 @@ class TimetableManageActivity : AppCompatActivity() {
                 }
                 lifecycleScope.launch {
                     if (wd.isNotEmpty()) {
-                        repository.saveDepartures(
-                            CampusLocation.NORTH,
-                            ServiceDayType.WORKDAY,
-                            wd.distinct().sorted().map { DepartureTime(it) },
+                        repository.saveScenarioDepartures(
+                            scenario = scenario,
+                            departures = wd.distinct().sorted().map { DepartureTime(it) },
+                            location = CampusLocation.NORTH,
+                            dayType = ServiceDayType.WORKDAY,
                         )
                     }
                     if (hol.isNotEmpty()) {
-                        repository.saveDepartures(
-                            CampusLocation.NORTH,
-                            ServiceDayType.HOLIDAY,
-                            hol.distinct().sorted().map { DepartureTime(it) },
+                        repository.saveScenarioDepartures(
+                            scenario = scenario,
+                            departures = hol.distinct().sorted().map { DepartureTime(it) },
+                            location = CampusLocation.NORTH,
+                            dayType = ServiceDayType.HOLIDAY,
                         )
                     }
                     loadTimetableForSelection()
@@ -481,32 +620,34 @@ class TimetableManageActivity : AppCompatActivity() {
         campus: CampusLocation,
         dayType: ServiceDayType,
     ): OcrImportOutcome {
-        when (campus) {
-            CampusLocation.NORTH -> {
-                tryStructuredPosterImport(
-                    decoded = decoded,
-                    campus = campus,
-                    dayType = dayType,
-                    crop = { OcrBitmapPreprocessor.cropNorthScheduleRegion(it) },
-                    parse = { lines, w, h, scale ->
-                        NorthPeak655PosterParser.tryParse(lines, w, h, scale)?.let {
-                            PosterParseResult(it.workday, it.holiday)
-                        }
-                    },
-                )?.let { return it }
-            }
-            CampusLocation.SOUTH -> {
-                tryStructuredPosterImport(
-                    decoded = decoded,
-                    campus = campus,
-                    dayType = dayType,
-                    crop = { OcrBitmapPreprocessor.cropSouthScheduleRegion(it) },
-                    parse = { lines, w, h, scale ->
-                        SouthPeak655PosterParser.tryParse(lines, w, h, scale)?.let {
-                            PosterParseResult(it.workday, it.holiday)
-                        }
-                    },
-                )?.let { return it }
+        if (scenario.template == ScenarioTemplate.MULTI_PROFILE) {
+            when (campus) {
+                CampusLocation.NORTH -> {
+                    tryStructuredPosterImport(
+                        decoded = decoded,
+                        campus = campus,
+                        dayType = dayType,
+                        crop = { OcrBitmapPreprocessor.cropNorthScheduleRegion(it) },
+                        parse = { lines, w, h, scale ->
+                            NorthPeak655PosterParser.tryParse(lines, w, h, scale)?.let {
+                                PosterParseResult(it.workday, it.holiday)
+                            }
+                        },
+                    )?.let { return it }
+                }
+                CampusLocation.SOUTH -> {
+                    tryStructuredPosterImport(
+                        decoded = decoded,
+                        campus = campus,
+                        dayType = dayType,
+                        crop = { OcrBitmapPreprocessor.cropSouthScheduleRegion(it) },
+                        parse = { lines, w, h, scale ->
+                            SouthPeak655PosterParser.tryParse(lines, w, h, scale)?.let {
+                                PosterParseResult(it.workday, it.holiday)
+                            }
+                        },
+                    )?.let { return it }
+                }
             }
         }
         val prep = OcrBitmapPreprocessor.preprocessForTimetableOcr(decoded)
@@ -577,36 +718,35 @@ class TimetableManageActivity : AppCompatActivity() {
             setPadding(pad, pad, pad, 0)
         }
 
-        val chipGroup = ChipGroup(this).apply {
-            isSingleSelection = true
-            isSelectionRequired = true
-            setPadding(0, 0, 0, btnMargin)
-        }
-        val chipWorkday = Chip(this).apply {
-            id = View.generateViewId()
-            isCheckable = true
-            text = getString(
+        val buttonWorkday = ScheduleChoiceButtons.createButton(
+            this,
+            getString(
                 R.string.timetable_import_preview_column_header,
                 getString(R.string.label_day_workday),
                 workday.size,
-            )
+            ),
+            checked = workday.isNotEmpty() || holiday.isEmpty(),
+            palette = ScheduleChoiceButtons.Palette.SoftSelected,
+        ).apply {
             isEnabled = workday.isNotEmpty()
-            isChecked = workday.isNotEmpty() || holiday.isEmpty()
         }
-        val chipHoliday = Chip(this).apply {
-            id = View.generateViewId()
-            isCheckable = true
-            text = getString(
+        val buttonHoliday = ScheduleChoiceButtons.createButton(
+            this,
+            getString(
                 R.string.timetable_import_preview_column_header,
                 getString(R.string.label_day_holiday),
                 holiday.size,
-            )
+            ),
+            checked = holiday.isNotEmpty() && workday.isEmpty(),
+            palette = ScheduleChoiceButtons.Palette.SoftSelected,
+        ).apply {
             isEnabled = holiday.isNotEmpty()
-            isChecked = holiday.isNotEmpty() && workday.isEmpty()
         }
-        chipGroup.addView(chipWorkday)
-        chipGroup.addView(chipHoliday)
-        root.addView(chipGroup)
+        root.addView(
+            ScheduleChoiceButtons.createEqualWidthRow(this, buttonWorkday, buttonHoliday).apply {
+                setPadding(0, 0, 0, btnMargin)
+            },
+        )
 
         val previewHost = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val previewScroll = ScrollView(this).apply {
@@ -634,7 +774,7 @@ class TimetableManageActivity : AppCompatActivity() {
             }
             setOnClickListener {
                 dialog.dismiss()
-                if (chipWorkday.isChecked) {
+                if (buttonWorkday.isChecked) {
                     savePosterOneColumn(
                         campus,
                         ServiceDayType.WORKDAY,
@@ -665,13 +805,10 @@ class TimetableManageActivity : AppCompatActivity() {
             }
         }
 
-        chipGroup.setOnCheckedStateChangeListener { _, checkedIds ->
-            when (checkedIds.firstOrNull()) {
-                chipWorkday.id -> refreshForSelection(workdaySelected = true)
-                chipHoliday.id -> refreshForSelection(workdaySelected = false)
-            }
+        ScheduleChoiceButtons.wireExclusive(buttonWorkday, buttonHoliday) {
+            refreshForSelection(workdaySelected = buttonWorkday.isChecked)
         }
-        refreshForSelection(workdaySelected = chipWorkday.isChecked)
+        refreshForSelection(workdaySelected = buttonWorkday.isChecked)
 
         dialog = AlertDialog.Builder(this)
             .setTitle(titleRes)
@@ -807,15 +944,17 @@ class TimetableManageActivity : AppCompatActivity() {
         savedToastRes: Int,
     ) {
         lifecycleScope.launch {
-            repository.saveDepartures(
-                campus,
-                ServiceDayType.WORKDAY,
-                workday.distinct().sorted().map { DepartureTime(it) },
+            repository.saveScenarioDepartures(
+                scenario = scenario,
+                departures = workday.distinct().sorted().map { DepartureTime(it) },
+                location = campus,
+                dayType = ServiceDayType.WORKDAY,
             )
-            repository.saveDepartures(
-                campus,
-                ServiceDayType.HOLIDAY,
-                holiday.distinct().sorted().map { DepartureTime(it) },
+            repository.saveScenarioDepartures(
+                scenario = scenario,
+                departures = holiday.distinct().sorted().map { DepartureTime(it) },
+                location = campus,
+                dayType = ServiceDayType.HOLIDAY,
             )
             loadTimetableForSelection()
             Toast.makeText(this@TimetableManageActivity, savedToastRes, Toast.LENGTH_SHORT).show()
@@ -830,10 +969,11 @@ class TimetableManageActivity : AppCompatActivity() {
         savedToastRes: Int,
     ) {
         lifecycleScope.launch {
-            repository.saveDepartures(
-                campus,
-                dayType,
-                times.distinct().sorted().map { DepartureTime(it) },
+            repository.saveScenarioDepartures(
+                scenario = scenario,
+                departures = times.distinct().sorted().map { DepartureTime(it) },
+                location = campus,
+                dayType = dayType,
             )
             loadTimetableForSelection()
             Toast.makeText(this@TimetableManageActivity, savedToastRes, Toast.LENGTH_SHORT).show()
@@ -842,6 +982,16 @@ class TimetableManageActivity : AppCompatActivity() {
     }
 
     companion object {
+        const val EXTRA_SCENARIO_ID = "scenario_id"
+        const val EXTRA_SCHEDULE_ID = "schedule_id"
+
+        fun intent(context: Context, scenarioId: String, scheduleId: String? = null): Intent {
+            return Intent(context, TimetableManageActivity::class.java).apply {
+                putExtra(EXTRA_SCENARIO_ID, scenarioId)
+                if (!scheduleId.isNullOrBlank()) putExtra(EXTRA_SCHEDULE_ID, scheduleId)
+            }
+        }
+
         /** If structured poster parse yields at least this many times, trust it over flat OCR. */
         private const val MIN_STRUCTURED_WORKDAY_DEPARTURES = 12
         private const val MIN_STRUCTURED_HOLIDAY_DEPARTURES = 8

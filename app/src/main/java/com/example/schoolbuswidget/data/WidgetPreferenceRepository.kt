@@ -3,6 +3,8 @@ package com.example.schoolbuswidget.data
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.schoolbuswidget.domain.ScenarioDefaults
 import kotlinx.coroutines.flow.first
 
 class WidgetPreferenceRepository(
@@ -58,6 +60,17 @@ class WidgetPreferenceRepository(
         return next
     }
 
+    suspend fun getScenarioId(widgetId: Int): String {
+        val prefs = context.timetableDataStore.data.first()
+        return prefs[perWidgetScenarioKey(widgetId)] ?: ScenarioDefaults.BUS_SCENARIO_ID
+    }
+
+    suspend fun setScenarioId(widgetId: Int, scenarioId: String) {
+        context.timetableDataStore.edit { data ->
+            data[perWidgetScenarioKey(widgetId)] = scenarioId
+        }
+    }
+
     suspend fun getLocationIndex(widgetId: Int): Int {
         val prefs = context.timetableDataStore.data.first()
         return prefs[perWidgetLocationKey(widgetId)] ?: getGlobalLocationIndex()
@@ -69,19 +82,49 @@ class WidgetPreferenceRepository(
     }
 
     suspend fun toggleLocation(widgetId: Int): Int {
-        return toggleGlobalLocation()
+        val current = getLocationIndex(widgetId)
+        val next = if (current == 0) 1 else 0
+        context.timetableDataStore.edit { data ->
+            data[perWidgetLocationKey(widgetId)] = next
+        }
+        return next
     }
 
     suspend fun toggleDayType(widgetId: Int): Int {
-        return cycleDayTypeMode()
+        val current = getDayTypeModeForWidget(widgetId)
+        val next = when (current) {
+            DAY_TYPE_MODE_AUTO -> DAY_TYPE_MODE_MANUAL_WORKDAY
+            DAY_TYPE_MODE_MANUAL_WORKDAY -> DAY_TYPE_MODE_MANUAL_HOLIDAY
+            else -> DAY_TYPE_MODE_AUTO
+        }
+        context.timetableDataStore.edit { data ->
+            data[perWidgetDayTypeModeKey(widgetId)] = next
+        }
+        return next
     }
 
     suspend fun clear(widgetId: Int) {
         context.timetableDataStore.edit { data ->
+            data.remove(perWidgetScenarioKey(widgetId))
             data.remove(perWidgetLocationKey(widgetId))
             data.remove(perWidgetDayTypeModeKey(widgetId))
         }
     }
+
+    suspend fun setSelectedScheduleId(scenarioId: String, scheduleId: String) {
+        context.timetableDataStore.edit { data ->
+            data[perScenarioScheduleKey(scenarioId)] = scheduleId
+        }
+    }
+
+    suspend fun getSelectedScheduleId(scenarioId: String): String? {
+        return context.timetableDataStore.data.first()[perScenarioScheduleKey(scenarioId)]
+    }
+
+    private fun perScenarioScheduleKey(scenarioId: String) =
+        stringPreferencesKey("scenario_${scenarioId}_selected_schedule")
+
+    private fun perWidgetScenarioKey(widgetId: Int) = stringPreferencesKey("widget_${widgetId}_scenario")
 
     private fun perWidgetLocationKey(widgetId: Int) = intPreferencesKey("widget_${widgetId}_location")
 

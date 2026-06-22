@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Typeface
 import android.os.Build
 import android.text.Layout
-import android.text.TextPaint
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
@@ -33,9 +32,8 @@ object AlignedHourTimesGrid {
     fun appendTo(container: LinearLayout, times: List<LocalTime>, style: Style = Style()) {
         if (times.isEmpty()) return
         val rowGapPx = defaultRowGapPx(container.context)
-        val columnWidthPx = timeColumnWidthPx(container.context, style.textSizeSp)
         times.chunked(TIMES_PER_ROW).forEach { rowTimes ->
-            container.addView(buildRow(container.context, rowTimes, style, rowGapPx, columnWidthPx))
+            container.addView(buildRow(container.context, rowTimes, style, rowGapPx))
         }
     }
 
@@ -44,7 +42,6 @@ object AlignedHourTimesGrid {
         rowTimes: List<LocalTime>,
         style: Style,
         defaultRowGapPx: Int,
-        columnWidthPx: Int,
     ): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -59,7 +56,7 @@ object AlignedHourTimesGrid {
                 if (column > 0) {
                     addView(createDividerCell(context, style))
                 }
-                addView(createTimeCell(context, rowTimes.getOrNull(column), style, columnWidthPx))
+                addView(createTimeCell(context, rowTimes.getOrNull(column), style))
             }
         }
 
@@ -67,10 +64,9 @@ object AlignedHourTimesGrid {
         context: Context,
         time: LocalTime?,
         style: Style,
-        columnWidthPx: Int,
     ): TextView =
         TextView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(columnWidthPx, ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             text = time?.toString().orEmpty()
             setTextSize(TypedValue.COMPLEX_UNIT_SP, style.textSizeSp)
             typeface = Typeface.MONOSPACE
@@ -88,9 +84,10 @@ object AlignedHourTimesGrid {
 
     private fun createDividerCell(context: Context, style: Style): TextView {
         val dividerColor = MaterialColors.getColor(context, R.attr.colorOutlineVariant, 0)
+        val dividerWidthPx = dividerWidthPx(context)
         return TextView(context).apply {
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dividerWidthPx,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             )
             text = "|"
@@ -104,18 +101,8 @@ object AlignedHourTimesGrid {
         }
     }
 
-    private fun timeColumnWidthPx(context: Context, textSizeSp: Float): Int {
-        val paint = TextPaint().apply {
-            typeface = Typeface.MONOSPACE
-            textSize = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_SP,
-                textSizeSp,
-                context.resources.displayMetrics,
-            )
-        }
-        val horizontalPaddingPx = (4 * context.resources.displayMetrics.density).toInt()
-        return paint.measureText("88:88").toInt() + horizontalPaddingPx * 2
-    }
+    private fun dividerWidthPx(context: Context): Int =
+        (6 * context.resources.displayMetrics.density).toInt()
 
     private fun defaultRowGapPx(context: Context): Int =
         (2 * context.resources.displayMetrics.density).toInt()

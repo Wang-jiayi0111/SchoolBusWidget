@@ -68,6 +68,37 @@ object DayTypeLabels {
         return context.getString(R.string.format_selection_line, loc, second)
     }
 
+    fun dayTypeOnlySelection(
+        context: Context,
+        mode: Int,
+        resolvedDayType: ServiceDayType,
+    ): String {
+        val second = if (mode == WidgetPreferenceRepository.DAY_TYPE_MODE_AUTO) {
+            context.getString(
+                R.string.label_auto_with_resolved,
+                serviceDayType(context, resolvedDayType),
+            )
+        } else {
+            modeName(context, mode)
+        }
+        return context.getString(R.string.format_selection_day_only, second)
+    }
+
+    fun widgetCompactDayType(
+        context: Context,
+        mode: Int,
+        resolvedDayType: ServiceDayType,
+    ): String {
+        return if (mode == WidgetPreferenceRepository.DAY_TYPE_MODE_AUTO) {
+            context.getString(
+                R.string.label_auto_with_resolved,
+                serviceDayType(context, resolvedDayType),
+            )
+        } else {
+            modeName(context, mode)
+        }
+    }
+
     fun resolutionSourceCaption(context: Context, source: DayTypeResolutionSource): String {
         return when (source) {
             DayTypeResolutionSource.HOLIDAY_API -> context.getString(R.string.caption_source_holiday_api)

@@ -7,17 +7,25 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.view.View
 import android.widget.RemoteViews
 import com.example.schoolbuswidget.MainActivity
 import com.example.schoolbuswidget.R
+import com.example.schoolbuswidget.data.ScenarioRepository
+import com.example.schoolbuswidget.data.ScheduleRepository
 import com.example.schoolbuswidget.data.TimetableDataStoreRepository
 import com.example.schoolbuswidget.data.WidgetPreferenceRepository
 import com.example.schoolbuswidget.data.holiday.HolidayCalendarRepository
 import com.example.schoolbuswidget.domain.CampusLocation
 import com.example.schoolbuswidget.domain.EffectiveDayTypeResolver
 import com.example.schoolbuswidget.domain.NextDepartureCalculator
+import com.example.schoolbuswidget.domain.Scenario
+import com.example.schoolbuswidget.domain.ScenarioTemplate
+import com.example.schoolbuswidget.domain.ServiceDayType
 import com.example.schoolbuswidget.domain.resolveServiceDayTypeForMode
 import com.example.schoolbuswidget.ui.DayTypeLabels
+import com.example.schoolbuswidget.ui.ScheduleLabels
+import com.example.schoolbuswidget.ui.scenario.ScenarioListActivity
 import com.example.schoolbuswidget.util.AppLog
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDateTime
@@ -100,46 +108,102 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetId: Int,
     ) {
-        val views = RemoteViews(context.packageName, R.layout.widget_school_bus).apply {
-            setOnClickPendingIntent(R.id.widget_open_app_area, openAppPendingIntent(context, appWidgetId))
-            setOnClickPendingIntent(R.id.buttonRefresh, manualRefreshPendingIntent(context, appWidgetId))
-            setOnClickPendingIntent(R.id.buttonLocation, toggleLocationPendingIntent(context, appWidgetId))
-            setOnClickPendingIntent(R.id.buttonDayType, toggleDayTypePendingIntent(context, appWidgetId))
-        }
-
         runBlocking {
+            val preferences = WidgetPreferenceRepository(context)
+            val scenarioRepository = ScenarioRepository(context)
+            val scenarioId = preferences.getScenarioId(appWidgetId)
+            val scenario = scenarioRepository.getScenario(scenarioId)
+
+            val views = RemoteViews(context.packageName, R.layout.widget_school_bus)
+            views.setOnClickPendingIntent(
+                R.id.widget_open_app_area,
+                openAppPendingIntent(context, appWidgetId, scenario?.id),
+            )
+            views.setOnClickPendingIntent(R.id.buttonRefresh, manualRefreshPendingIntent(context, appWidgetId))
+            views.setOnClickPendingIntent(R.id.buttonLocation, toggleLocationPendingIntent(context, appWidgetId))
+            views.setOnClickPendingIntent(R.id.buttonDayType, toggleDayTypePendingIntent(context, appWidgetId))
+
+            if (scenario == null) {
+                views.setTextViewText(R.id.textTitle, context.getString(R.string.widget_scenario_missing))
+                views.setViewVisibility(R.id.textSelection, View.GONE)
+                views.setTextViewText(R.id.textNextDeparture, context.getString(R.string.main_time_placeholder))
+                views.setTextViewText(R.id.textMinutesLeft, context.getString(R.string.widget_error_generic))
+                views.setViewVisibility(R.id.textFollowingDeparture, View.GONE)
+                views.setViewVisibility(R.id.buttonLocation, View.GONE)
+                views.setViewVisibility(R.id.buttonDayType, View.GONE)
+                appWidgetManager.updateAppWidget(appWidgetId, views)
+                return@runBlocking
+            }
+
+            views.setTextViewText(R.id.textTitle, scenario.name)
+            applyTemplateUi(views, scenario.template)
+
             try {
                 val now = LocalDateTime.now()
-                val preferences = WidgetPreferenceRepository(context)
                 val northSelected = preferences.getLocationIndex(appWidgetId) == 0
-                val selectedLocation = if (northSelected) {
-                    CampusLocation.NORTH
-                } else {
-                    CampusLocation.SOUTH
-                }
+                val selectedLocation = if (northSelected) CampusLocation.NORTH else CampusLocation.SOUTH
                 val mode = preferences.getDayTypeModeForWidget(appWidgetId)
                 val holidayRepository = HolidayCalendarRepository(context)
                 val effectiveResolver = EffectiveDayTypeResolver(holidayRepository)
-                val dayResolution = resolveServiceDayTypeForMode(mode, now.toLocalDate(), effectiveResolver)
+                val dayResolution = when (scenario.template) {
+                    ScenarioTemplate.SIMPLE -> null
+                    ScenarioTemplate.MULTI_SCHEDULE -> resolveServiceDayTypeForMode(
+                        mode,
+                        now.toLocalDate(),
+                        effectiveResolver,
+                    )
+                    else -> resolveServiceDayTypeForMode(mode, now.toLocalDate(), effectiveResolver)
+                }
+                val effectiveDayType = dayResolution?.dayType ?: ServiceDayType.WORKDAY
 
                 val repository = TimetableDataStoreRepository(context)
-                val departures = repository.getDepartures(selectedLocation, dayResolution.dayType)
+                val (departures, activeNames) = when (scenario.template) {
+                    ScenarioTemplate.MULTI_SCHEDULE -> {
+                        val result = ScheduleRepository(context).getEffectiveDepartures(
+                            scenario = scenario,
+                            date = now.toLocalDate(),
+                            resolvedDayType = effectiveDayType,
+                        )
+                        result.first to result.second.map { it.name }
+                    }
+                    else -> {
+                        repository.getScenarioDepartures(
+                            scenario = scenario,
+                            location = selectedLocation,
+                            dayType = effectiveDayType,
+                        ) to emptyList<String>()
+                    }
+                }
                 val upcoming = NextDepartureCalculator().calculateUpcoming(now, departures)
 
-                views.setTextViewText(
-                    R.id.textSelection,
-                    DayTypeLabels.compactSelection(
-                        context,
-                        northSelected,
-                        mode,
-                        dayResolution.dayType,
-                    ),
-                )
+                when (scenario.template) {
+                    ScenarioTemplate.SIMPLE -> views.setViewVisibility(R.id.textSelection, View.GONE)
+                    ScenarioTemplate.MULTI_SCHEDULE -> {
+                        views.setViewVisibility(R.id.textSelection, View.VISIBLE)
+                        views.setTextViewText(
+                            R.id.textSelection,
+                            DayTypeLabels.widgetCompactDayType(
+                                context,
+                                mode,
+                                effectiveDayType,
+                            ),
+                        )
+                    }
+                    ScenarioTemplate.MULTI_PROFILE -> views.setTextViewText(
+                        R.id.textSelection,
+                        DayTypeLabels.compactSelection(
+                            context,
+                            northSelected,
+                            mode,
+                            effectiveDayType,
+                        ),
+                    )
+                }
 
                 if (upcoming == null) {
                     views.setTextViewText(R.id.textNextDeparture, context.getString(R.string.main_time_placeholder))
                     views.setTextViewText(R.id.textMinutesLeft, context.getString(R.string.widget_no_departure))
-                    views.setViewVisibility(R.id.textFollowingDeparture, android.view.View.GONE)
+                    views.setViewVisibility(R.id.textFollowingDeparture, View.GONE)
                 } else {
                     val result = upcoming.next
                     views.setTextViewText(
@@ -152,9 +216,9 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
                     )
                     val following = upcoming.following
                     if (following == null) {
-                        views.setViewVisibility(R.id.textFollowingDeparture, android.view.View.GONE)
+                        views.setViewVisibility(R.id.textFollowingDeparture, View.GONE)
                     } else {
-                        views.setViewVisibility(R.id.textFollowingDeparture, android.view.View.VISIBLE)
+                        views.setViewVisibility(R.id.textFollowingDeparture, View.VISIBLE)
                         views.setTextViewText(
                             R.id.textFollowingDeparture,
                             context.getString(
@@ -168,11 +232,28 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
                 AppLog.e("Widget update failed for id=$appWidgetId", e)
                 views.setTextViewText(R.id.textNextDeparture, context.getString(R.string.widget_error_generic))
                 views.setTextViewText(R.id.textMinutesLeft, "")
-                views.setViewVisibility(R.id.textFollowingDeparture, android.view.View.GONE)
+                views.setViewVisibility(R.id.textFollowingDeparture, View.GONE)
+            }
+
+            appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+    }
+
+    private fun applyTemplateUi(views: RemoteViews, template: ScenarioTemplate) {
+        when (template) {
+            ScenarioTemplate.SIMPLE -> {
+                views.setViewVisibility(R.id.buttonLocation, View.GONE)
+                views.setViewVisibility(R.id.buttonDayType, View.GONE)
+            }
+            ScenarioTemplate.MULTI_SCHEDULE -> {
+                views.setViewVisibility(R.id.buttonLocation, View.GONE)
+                views.setViewVisibility(R.id.buttonDayType, View.VISIBLE)
+            }
+            ScenarioTemplate.MULTI_PROFILE -> {
+                views.setViewVisibility(R.id.buttonLocation, View.VISIBLE)
+                views.setViewVisibility(R.id.buttonDayType, View.VISIBLE)
             }
         }
-
-        appWidgetManager.updateAppWidget(appWidgetId, views)
     }
 
     private fun refreshAllWidgets(context: Context) {
@@ -206,8 +287,16 @@ class SchoolBusAppWidgetProvider : AppWidgetProvider() {
         alarmManager.cancel(minuteRefreshPendingIntent(context))
     }
 
-    private fun openAppPendingIntent(context: Context, appWidgetId: Int): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java).apply {
+    private fun openAppPendingIntent(
+        context: Context,
+        appWidgetId: Int,
+        scenarioId: String?,
+    ): PendingIntent {
+        val intent = if (scenarioId.isNullOrBlank()) {
+            Intent(context, ScenarioListActivity::class.java)
+        } else {
+            MainActivity.intent(context, scenarioId)
+        }.apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP

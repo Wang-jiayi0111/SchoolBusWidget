@@ -6,6 +6,10 @@
     <dimen name="card_padding">20dp</dimen>
     <dimen name="hero_time_text">44sp</dimen>
     <dimen name="widget_corner">14dp</dimen>
+    <dimen name="chip_schedule_spacing">8dp</dimen>
+    <dimen name="theme_choice_button_width">92dp</dimen>
+    <dimen name="theme_choice_button_height">44dp</dimen>
+    <dimen name="theme_picker_title_bottom_gap">20dp</dimen>
     <dimen name="dialog_edit_padding">16dp</dimen>
     <dimen name="dialog_import_preview_max_height">420dp</dimen>
     <dimen name="dialog_import_preview_section_gap">20dp</dimen>
