@@ -1,8 +1,32 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
 }
 
 val rapidOcrAar = file("libs/OcrLibrary-1.3.0-release.aar")
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        load(file.inputStream())
+    }
+}
+
+fun releaseSigningFromLocalProperties() = run {
+    val storeFilePath = localProperties.getProperty("RELEASE_STORE_FILE") ?: return@run null
+    val storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD") ?: return@run null
+    val keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS") ?: return@run null
+    val keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD") ?: return@run null
+    val storeFile = rootProject.file(storeFilePath)
+    if (!storeFile.isFile) return@run null
+    mapOf(
+        "storeFile" to storeFile,
+        "storePassword" to storePassword,
+        "keyAlias" to keyAlias,
+        "keyPassword" to keyPassword,
+    )
+}
 
 android {
     namespace = "com.example.schoolbuswidget"
@@ -25,8 +49,20 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        releaseSigningFromLocalProperties()?.let { signing ->
+            create("release") {
+                storeFile = signing["storeFile"] as java.io.File
+                storePassword = signing["storePassword"] as String
+                keyAlias = signing["keyAlias"] as String
+                keyPassword = signing["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

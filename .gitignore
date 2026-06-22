@@ -8,6 +8,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+*.jks
+*.keystore
 
 # Python
 __pycache__/
